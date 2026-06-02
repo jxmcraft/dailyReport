@@ -1,0 +1,77 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum AgentStatus {
+  ACTIVE
+  PAUSED
+  RUNNING
+}
+
+enum SourceType {
+  NEWS_API
+  GOOGLE_SEARCH
+  CUSTOM_SCRAPE
+  FINANCIAL_STREAM
+}
+
+enum DeliveryTarget {
+  SLACK
+  EMAIL
+  DISCORD
+}
+
+enum ExecutionStatus {
+  SUCCESS
+  PARTIAL_FAILURE
+  CRITICAL_ERROR
+}
+
+model Agent {
+  id               String               @id @default(uuid())
+  name             String
+  topicKeywords    String[]
+  cronSchedule     String
+  systemPrompt     String               @db.Text
+  status           AgentStatus          @default(ACTIVE)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  dataSources      DataSource[]
+  deliveryChannels DeliveryChannel[]
+  reports          IntelligenceReport[]
+}
+
+model DataSource {
+  id               String     @id @default(uuid())
+  agentId          String
+  agent            Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  sourceType       SourceType
+  apiEndpoint      String
+  authSecretKeyRef String
+}
+
+model DeliveryChannel {
+  id            String         @id @default(uuid())
+  agentId       String
+  agent         Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  target        DeliveryTarget
+  webhookUrl    String
+  recipientList String[]
+}
+
+model IntelligenceReport {
+  id                   String          @id @default(uuid())
+  agentId              String
+  agent                Agent           @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  timestamp            DateTime        @default(now())
+  rawIngestedDataCount Int
+  generatedMarkdown    String          @db.Text
+  status               ExecutionStatus
+  sourcesUsed          Json
+  sourceDiagnostics    Json?
+}
