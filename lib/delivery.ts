@@ -1,7 +1,11 @@
 import type { DeliveryChannel } from "@prisma/client";
+import nodemailer from "nodemailer";
 
-const EXECUTION_TIMEOUT_MS = 180000;
+import { EXECUTION_TIMEOUT_MS } from "@/lib/constants";
+import { envSecret } from "@/lib/env";
+import { markdownToEmailHtml } from "@/lib/markdown-email";
 const DISCORD_CONTENT_LIMIT = 2000;
+const EMAIL_SUBJECT = "PulseAgent Intelligence Report";
 
 async function postJson(url: string, body: unknown, headers: Record<string, string> = {}) {
   const response = await fetch(url, {
@@ -14,6 +18,35 @@ async function postJson(url: string, body: unknown, headers: Record<string, stri
     const text = await response.text().catch(() => "");
     throw new Error(`Delivery failed (${response.status}): ${text}`);
   }
+}
+
+async function sendEmailSmtp(to: string[], text: string): Promise<void> {
+  const host = envSecret("SMTP_HOST");
+  const from = envSecret("SMTP_FROM");
+  if (!host || !from) {
+    throw new Error(
+      "Configure SMTP_HOST and SMTP_FROM in .env for email delivery (e.g. Gmail: smtp.gmail.com)."
+    );
+  }
+
+  const port = Number(envSecret("SMTP_PORT") ?? "587");
+  const user = envSecret("SMTP_USER");
+  const pass = envSecret("SMTP_PASS");
+
+  const transport = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: user && pass ? { user, pass } : undefined,
+  });
+
+  await transport.sendMail({
+    from,
+    to,
+    subject: EMAIL_SUBJECT,
+    text,
+    html: markdownToEmailHtml(text),
+  });
 }
 
 export async function dispatchToChannel(
@@ -30,20 +63,11 @@ export async function dispatchToChannel(
       });
       return;
     case "EMAIL": {
-      const apiKey = process.env.SENDGRID_API_KEY;
-      if (!apiKey) throw new Error("Missing SENDGRID_API_KEY environment variable.");
-      await postJson(
-        channel.webhookUrl,
-        {
-          personalizations: [
-            { to: channel.recipientList.map((email) => ({ email })) },
-          ],
-          from: { email: process.env.SENDGRID_FROM_EMAIL ?? "reports@pulseagent.app" },
-          subject: "PulseAgent Intelligence Report",
-          content: [{ type: "text/plain", value: markdown }],
-        },
-        { Authorization: `Bearer ${apiKey}` }
-      );
+      const to = channel.recipientList;
+      if (to.length === 0) {
+        throw new Error("No email recipients configured for this agent.");
+      }
+      await sendEmailSmtp(to, markdown);
       return;
     }
   }

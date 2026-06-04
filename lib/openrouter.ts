@@ -1,4 +1,4 @@
-const EXECUTION_TIMEOUT_MS = 180000;
+import { EXECUTION_TIMEOUT_MS } from "@/lib/constants";
 const TARGET_MODEL = "poolside/laguna-m.1:free";
 
 export async function callOpenRouterLLM(
@@ -22,7 +22,7 @@ export async function callOpenRouterLLM(
         { role: "system", content: systemPrompt },
         {
           role: "user",
-          content: `Analyze the following real-time ingested data and build the daily update report:\n\n${accumulatedContext}`,
+          content: `Using ONLY the evidence below, produce the report requested in the system prompt. Follow every required section and output format.\n\n${accumulatedContext}`,
         },
       ],
       temperature: 0.3,

@@ -37,8 +37,10 @@ model Agent {
   name             String
   topicKeywords    String[]
   cronSchedule     String
-  systemPrompt     String               @db.Text
-  status           AgentStatus          @default(ACTIVE)
+  systemPrompt       String               @db.Text
+  relevanceMinScore  Int                  @default(3)
+  keywordMatchMode   String               @default("OR")
+  status             AgentStatus          @default(ACTIVE)
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
   dataSources      DataSource[]

@@ -10,21 +10,26 @@ export function SourcesAccordion({ sources }: { sources: SourceView[] }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="rounded-md border border-border">
+    <div className="overflow-hidden rounded-lg border border-border/60 bg-white">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium"
+        className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-foreground transition-colors hover:bg-slate-50"
       >
-        <span>Sources Audited ({sources.length})</span>
+        <span className="text-muted-foreground">
+          Sources <span className="text-foreground">({sources.length})</span>
+        </span>
         <ChevronDown
-          className={cn("h-4 w-4 transition-transform", open && "rotate-180")}
+          className={cn(
+            "h-4 w-4 text-muted-foreground transition-transform duration-200",
+            open && "rotate-180"
+          )}
         />
       </button>
-      {open && (
-        <ul className="divide-y divide-border border-t border-border">
+      {open ? (
+        <ul className="divide-y divide-border/60 border-t border-border/60">
           {sources.map((s) => (
-            <li key={s.url} className="space-y-1 px-4 py-3">
+            <li key={s.url} className="space-y-1.5 px-4 py-3.5">
               <a
                 href={s.url}
                 target="_blank"
@@ -34,15 +39,16 @@ export function SourcesAccordion({ sources }: { sources: SourceView[] }) {
                 {s.title}
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
-              <p className="text-xs text-muted-foreground">{s.snippet}</p>
-              <p className="text-[11px] text-muted-foreground">
-                Fetched {formatDate(s.timestampFetched)} &middot;{" "}
-                <span className="break-all">{s.url}</span>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {s.snippet}
+              </p>
+              <p className="text-xs text-muted-foreground/80">
+                Fetched {formatDate(s.timestampFetched)}
               </p>
             </li>
           ))}
         </ul>
-      )}
+      ) : null}
     </div>
   );
 }

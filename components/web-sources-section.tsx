@@ -4,9 +4,7 @@ import { useState, useTransition } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, Plus, X } from "lucide-react";
 
 import { validateScrapeUrl, type ScrapeCheckResult } from "@/app/agents/new/actions";
-
-const inputClass =
-  "h-10 w-full rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+import { inputClass } from "@/components/ui/form-classes";
 
 interface Row {
   url: string;

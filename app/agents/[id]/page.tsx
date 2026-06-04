@@ -1,17 +1,25 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
-import ReactMarkdown from "react-markdown";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatusBadge, ReportStatusBadge } from "@/components/status-badge";
-import { PipelineStatusIndicator } from "@/components/pipeline-status-indicator";
+import { AgentLiveMonitor } from "@/components/agent-live-monitor";
+import { AgentRunProvider } from "@/components/agent-run-context";
+import { KeywordChips } from "@/components/keyword-chips";
+import { CollapsibleSection } from "@/components/collapsible-section";
 import { CronConfigurator } from "@/components/cron-configurator";
+import { DeleteAgentButton } from "@/components/delete-agent-button";
+import { DeliverySettings } from "@/components/delivery-settings";
 import { MarkdownPreview } from "@/components/markdown-preview";
-import { SourcesAccordion } from "@/components/sources-accordion";
-import { SourceHealthCard } from "@/components/source-health-card";
+import {
+  CollapsibleGroup,
+  PageHeader,
+  PageShell,
+  SectionLabel,
+} from "@/components/page-shell";
+import { RelevanceSettings } from "@/components/relevance-settings";
+import { StatusBadge } from "@/components/status-badge";
 import { TriggerButton } from "@/components/trigger-button";
-import { getAgentById, formatDate } from "@/lib/agents";
+import { cronToHuman, getAgentById } from "@/lib/agents";
+import { pluralize } from "@/lib/pluralize";
+import { deliverySubtitle } from "@/lib/delivery-subtitle";
 
 export const dynamic = "force-dynamic";
 
@@ -23,88 +31,94 @@ export default async function AgentDetailPage({
   const agent = await getAgentById(params.id);
   if (!agent) notFound();
 
+  const keywordSummary = `${cronToHuman(agent.cronSchedule)} · ${pluralize(agent.reports.length, "report")}`;
+  const deliveryChannel = agent.deliveryChannels[0];
+  const deliverySubtitleText = deliverySubtitle(deliveryChannel);
+
   return (
-    <div className="mx-auto max-w-5xl px-8 py-10">
-      <Link
-        href="/"
-        className="mb-6 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+    <PageShell>
+      <AgentRunProvider
+        agentId={agent.id}
+        initialStatus={agent.status}
+        initialPipelineState={agent.pipelineState}
+        initialReports={agent.reports}
       >
-        <ArrowLeft className="h-4 w-4" />
-        Back to dashboard
-      </Link>
+        <PageHeader
+          backHref="/"
+          backLabel="Dashboard"
+          title={agent.name}
+          description={keywordSummary}
+          badges={<StatusBadge status={agent.status} />}
+          actions={
+            <>
+              <TriggerButton agentId={agent.id} />
+              <DeleteAgentButton agentId={agent.id} agentName={agent.name} />
+            </>
+          }
+        />
 
-      <div className="mb-8 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">{agent.name}</h1>
-          <StatusBadge status={agent.status} />
-        </div>
-        <TriggerButton agentId={agent.id} />
-      </div>
+        {agent.topicKeywords.length > 0 ? (
+          <div className="mb-10">
+            <KeywordChips keywords={agent.topicKeywords} variant="detail" />
+          </div>
+        ) : null}
 
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Pipeline Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <PipelineStatusIndicator state={agent.pipelineState} />
-          </CardContent>
-        </Card>
+        <SectionLabel
+          title="Activity"
+          description="Live pipeline status and generated reports"
+        />
+        <AgentLiveMonitor />
+      </AgentRunProvider>
 
-        <SourceHealthCard diagnostics={agent.reports[0]?.sourceDiagnostics ?? null} />
+      <SectionLabel
+        title="Configuration"
+        description="Schedule, relevance rules, and report prompt"
+      />
+      <CollapsibleGroup className="mb-6">
+        <CollapsibleSection
+          variant="nested"
+          title="Relevance filtering"
+          subtitle={`Min score ${agent.relevanceMinScore} · ${agent.keywordMatchMode} match · last 7 days only`}
+          defaultOpen={false}
+        >
+          <RelevanceSettings
+            agentId={agent.id}
+            initialMinScore={agent.relevanceMinScore}
+            initialMatchMode={agent.keywordMatchMode}
+            topicKeywords={agent.topicKeywords}
+          />
+        </CollapsibleSection>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Schedule</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CronConfigurator cron={agent.cronSchedule} agentId={agent.id} />
-          </CardContent>
-        </Card>
+        <CollapsibleSection
+          variant="nested"
+          title="Schedule"
+          subtitle={cronToHuman(agent.cronSchedule)}
+          defaultOpen={false}
+        >
+          <CronConfigurator cron={agent.cronSchedule} agentId={agent.id} />
+        </CollapsibleSection>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Prompt & Report Framework</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <MarkdownPreview initialPrompt={agent.systemPrompt} agentId={agent.id} />
-          </CardContent>
-        </Card>
+        <CollapsibleSection
+          variant="nested"
+          title="Prompt & report framework"
+          subtitle="Edit, optimize, and preview the system prompt"
+          defaultOpen={false}
+        >
+          <MarkdownPreview
+            initialPrompt={agent.systemPrompt}
+            agentId={agent.id}
+          />
+        </CollapsibleSection>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              Report History ({agent.reports.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {agent.reports.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No reports generated yet.
-              </p>
-            )}
-            {agent.reports.map((report) => (
-              <div key={report.id} className="space-y-3 border-b border-border pb-6 last:border-0 last:pb-0">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">
-                    {formatDate(report.timestamp)}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">
-                      {report.rawIngestedDataCount} items ingested
-                    </span>
-                    <ReportStatusBadge status={report.status} />
-                  </div>
-                </div>
-                <div className="prose prose-sm prose-slate max-w-none rounded-md border border-border bg-white p-4">
-                  <ReactMarkdown>{report.generatedMarkdown}</ReactMarkdown>
-                </div>
-                <SourcesAccordion sources={report.sourcesUsed} />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+        <CollapsibleSection
+          variant="nested"
+          title="Delivery"
+          subtitle={deliverySubtitleText}
+          defaultOpen={false}
+        >
+          <DeliverySettings agentId={agent.id} channel={deliveryChannel} />
+        </CollapsibleSection>
+      </CollapsibleGroup>
+    </PageShell>
   );
 }

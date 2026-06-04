@@ -1,6 +1,15 @@
 // Source fetching layer: every provider is normalized into RankedDocument[] so
 // the ranking layer and the LLM see one consistent shape regardless of origin.
 
+import { envSecret } from "@/lib/env";
+import { buildNewsSearchQuery } from "@/lib/ranking";
+import {
+  DEFAULT_MAX_NEWS_AGE_DAYS,
+  newsFromDateYmd,
+  newsFromIso,
+  newsFromUnixSeconds,
+} from "@/lib/recency";
+
 export interface RankedDocument {
   title: string;
   url: string;
@@ -19,11 +28,17 @@ export interface SourceDiagnostic {
   contentType?: string;
   itemsIngested: number;
   errorReason?: string;
+  retriedWithBroaderQuery?: boolean;
   checkedAt: string;
 }
 
 export type ProviderType =
   | "NEWS_API"
+  | "GNEWS"
+  | "CURRENTS"
+  | "MARKETAUX"
+  | "GUARDIAN"
+  | "MEDIASTACK"
   | "GOOGLE_SEARCH"
   | "REDDIT"
   | "HACKER_NEWS"
@@ -51,6 +66,32 @@ function safeHost(url: string): string {
 
 function enc(s: string): string {
   return encodeURIComponent(s);
+}
+
+function withQueryParam(endpoint: string, key: string, value: string): string {
+  const url = new URL(endpoint);
+  if (!url.searchParams.has(key)) url.searchParams.set(key, value);
+  return url.toString();
+}
+
+// Reddit listing pages need a .json suffix for the public API.
+function normalizeRedditJsonUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (!u.pathname.endsWith(".json")) {
+      u.pathname = u.pathname.replace(/\/?$/, "/") + ".json";
+    }
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+function extractTickerSymbols(keywords: string[]): string {
+  return keywords
+    .map((k) => k.trim())
+    .filter((k) => /^[A-Z]{1,5}$/.test(k))
+    .join(",");
 }
 
 // Retry transient failures (network errors, 429, 5xx). 4xx are returned as-is.
@@ -121,34 +162,80 @@ function clip(s: unknown, n: number): string {
 
 // Built-in sources run automatically from the agent's keywords. No per-agent API
 // configuration is needed; keys come from the environment.
-export function buildDefaultProviders(keywords: string[]): ProviderSpec[] {
-  const q = keywords.join(" ").trim() || "technology";
-  const booleanQ = keywords.length > 1 ? keywords.join(" OR ") : q;
+export function buildDefaultProviders(
+  keywords: string[],
+  maxAgeDays: number = DEFAULT_MAX_NEWS_AGE_DAYS
+): ProviderSpec[] {
+  const q = buildNewsSearchQuery(keywords);
+  const fromYmd = newsFromDateYmd(maxAgeDays);
+  const fromIso = enc(newsFromIso(maxAgeDays));
+  const fromUnix = newsFromUnixSeconds(maxAgeDays);
   const specs: ProviderSpec[] = [];
 
-  if (process.env.NEWS_API_KEY) {
+  if (envSecret("NEWS_API_KEY")) {
     specs.push({
       id: "builtin-newsapi",
       sourceType: "NEWS_API",
-      endpoint: `https://newsapi.org/v2/everything?q=${enc(booleanQ)}&language=en&sortBy=publishedAt&pageSize=20`,
+      endpoint: `https://newsapi.org/v2/everything?q=${enc(q)}&language=en&sortBy=publishedAt&from=${fromYmd}&pageSize=20`,
+    });
+  }
+  if (envSecret("GNEWS_API_KEY")) {
+    specs.push({
+      id: "builtin-gnews",
+      sourceType: "GNEWS",
+      endpoint: `https://gnews.io/api/v4/search?q=${enc(q)}&lang=en&max=20&from=${fromIso}&sortby=publishedAt`,
+    });
+  }
+  if (envSecret("CURRENTS_API_KEY")) {
+    specs.push({
+      id: "builtin-currents",
+      sourceType: "CURRENTS",
+      endpoint: `https://api.currentsapi.services/v1/search?keywords=${enc(q)}&language=en&start_date=${fromYmd}`,
+    });
+  }
+  if (envSecret("MARKETAUX_API_KEY")) {
+    const tickers = extractTickerSymbols(keywords);
+    let endpoint = `https://api.marketaux.com/v1/news/all?search=${enc(q)}&language=en&limit=20&published_after=${fromYmd}`;
+    if (tickers) {
+      endpoint += `&symbols=${enc(tickers)}&filter_entities=true`;
+    }
+    specs.push({
+      id: "builtin-marketaux",
+      sourceType: "MARKETAUX",
+      endpoint,
+    });
+  }
+  if (envSecret("GUARDIAN_API_KEY")) {
+    specs.push({
+      id: "builtin-guardian",
+      sourceType: "GUARDIAN",
+      endpoint: `https://content.guardianapis.com/search?q=${enc(q)}&from-date=${fromYmd}&order-by=newest&show-fields=trailText,headline&page-size=20`,
+    });
+  }
+  if (envSecret("MEDIASTACK_API_KEY")) {
+    specs.push({
+      id: "builtin-mediastack",
+      sourceType: "MEDIASTACK",
+      endpoint: `https://api.mediastack.com/v1/news?keywords=${enc(q)}&languages=en&limit=20`,
     });
   }
   specs.push({
     id: "builtin-reddit",
     sourceType: "REDDIT",
-    endpoint: `https://www.reddit.com/search.json?q=${enc(q)}&sort=relevance&t=month&limit=15`,
+    endpoint: `https://www.reddit.com/search.json?q=${enc(q)}&sort=new&t=week&limit=15`,
   });
   specs.push({
     id: "builtin-hackernews",
     sourceType: "HACKER_NEWS",
-    endpoint: `https://hn.algolia.com/api/v1/search?query=${enc(q)}&tags=story&hitsPerPage=20`,
+    endpoint: `https://hn.algolia.com/api/v1/search?query=${enc(q)}&tags=story&hitsPerPage=20&numericFilters=created_at_i>${fromUnix}`,
   });
-  if (process.env.GOOGLE_SEARCH_CX && process.env.GOOGLE_SEARCH_API_KEY) {
-    const cx = process.env.GOOGLE_SEARCH_CX;
+  const googleCx = envSecret("GOOGLE_SEARCH_CX");
+  if (googleCx && envSecret("GOOGLE_SEARCH_API_KEY")) {
+    const cx = googleCx;
     specs.push({
       id: "builtin-google",
       sourceType: "GOOGLE_SEARCH",
-      endpoint: `https://www.googleapis.com/customsearch/v1?q=${enc(q)}&cx=${enc(cx)}&num=10`,
+      endpoint: `https://www.googleapis.com/customsearch/v1?q=${enc(q)}&cx=${enc(cx)}&num=10&dateRestrict=d${maxAgeDays}`,
     });
   }
   return specs;
@@ -158,7 +245,11 @@ export function buildDefaultProviders(keywords: string[]): ProviderSpec[] {
 // everything else is scraped as generic HTML.
 export function buildWebProvider(url: string, id: string): ProviderSpec {
   if (safeHost(url).includes("reddit.com")) {
-    return { id, sourceType: "REDDIT", endpoint: url };
+    return {
+      id,
+      sourceType: "REDDIT",
+      endpoint: normalizeRedditJsonUrl(url),
+    };
   }
   return { id, sourceType: "WEB", endpoint: url };
 }
@@ -171,11 +262,9 @@ function buildRequest(spec: ProviderSpec): {
   expectHtml: boolean;
 } {
   const reddit = () => {
-    const redditUser = process.env.REDDIT_USER ?? "anonymous";
+    const redditUser = envSecret("REDDIT_USER") ?? "anonymous";
     return {
-      url: spec.endpoint,
-      // Reddit 403s generic UAs; a UA naming a real account plus an explicit
-      // Accept header is what reliably gets the public JSON.
+      url: normalizeRedditJsonUrl(spec.endpoint),
       headers: {
         "User-Agent": `web:pulseagent:1.0 (by /u/${redditUser})`,
         Accept: "application/json",
@@ -184,18 +273,55 @@ function buildRequest(spec: ProviderSpec): {
     };
   };
 
+  const jsonUrl = { headers: {} as Record<string, string>, expectHtml: false };
+
   switch (spec.sourceType) {
     case "REDDIT":
       return reddit();
     case "NEWS_API":
       return {
         url: spec.endpoint,
-        headers: { "X-Api-Key": process.env.NEWS_API_KEY ?? "" },
+        headers: { "X-Api-Key": envSecret("NEWS_API_KEY") ?? "" },
         expectHtml: false,
       };
+    case "GNEWS": {
+      const key = envSecret("GNEWS_API_KEY") ?? "";
+      return {
+        url: key ? withQueryParam(spec.endpoint, "apikey", key) : spec.endpoint,
+        ...jsonUrl,
+      };
+    }
+    case "CURRENTS": {
+      const key = envSecret("CURRENTS_API_KEY") ?? "";
+      return {
+        url: key ? withQueryParam(spec.endpoint, "apiKey", key) : spec.endpoint,
+        ...jsonUrl,
+      };
+    }
+    case "MARKETAUX": {
+      const key = envSecret("MARKETAUX_API_KEY") ?? "";
+      return {
+        url: key ? withQueryParam(spec.endpoint, "api_token", key) : spec.endpoint,
+        ...jsonUrl,
+      };
+    }
+    case "GUARDIAN": {
+      const key = envSecret("GUARDIAN_API_KEY") ?? "";
+      return {
+        url: key ? withQueryParam(spec.endpoint, "api-key", key) : spec.endpoint,
+        ...jsonUrl,
+      };
+    }
+    case "MEDIASTACK": {
+      const key = envSecret("MEDIASTACK_API_KEY") ?? "";
+      return {
+        url: key ? withQueryParam(spec.endpoint, "access_key", key) : spec.endpoint,
+        ...jsonUrl,
+      };
+    }
     case "GOOGLE_SEARCH": {
       const url = new URL(spec.endpoint);
-      const key = process.env.GOOGLE_SEARCH_API_KEY ?? "";
+      const key = envSecret("GOOGLE_SEARCH_API_KEY") ?? "";
       if (key && !url.searchParams.has("key")) url.searchParams.set("key", key);
       return { url: url.toString(), headers: {}, expectHtml: false };
     }
@@ -244,10 +370,80 @@ interface HnHit {
   objectID?: string;
   created_at?: string;
 }
+interface MarketAuxEntity {
+  name?: string;
+  symbol?: string;
+}
+
+function checkApiPayload(
+  spec: ProviderSpec,
+  data: unknown
+): string | null {
+  switch (spec.sourceType) {
+    case "NEWS_API": {
+      const payload = data as { status?: string; code?: string; message?: string };
+      if (payload.status && payload.status !== "ok") {
+        return `NewsAPI status=${payload.status} (${payload.code ?? "n/a"}: ${payload.message ?? ""})`;
+      }
+      return null;
+    }
+    case "GOOGLE_SEARCH": {
+      const payload = data as { error?: { message?: string } };
+      if (payload.error) {
+        return `Google API error: ${payload.error.message ?? "unknown"}`;
+      }
+      return null;
+    }
+    case "CURRENTS": {
+      const payload = data as { status?: string; message?: string };
+      if (payload.status && payload.status !== "ok") {
+        return `Currents status=${payload.status}: ${payload.message ?? ""}`;
+      }
+      return null;
+    }
+    case "GNEWS": {
+      const payload = data as {
+        errors?: string[];
+        message?: string;
+      };
+      if (payload.errors?.length) {
+        return `GNews: ${payload.errors.join("; ")}`;
+      }
+      if (payload.message) return `GNews: ${payload.message}`;
+      return null;
+    }
+    case "GUARDIAN": {
+      const payload = data as {
+        response?: { status?: string; message?: string };
+      };
+      const status = payload.response?.status;
+      if (status && status !== "ok") {
+        return `Guardian status=${status}: ${payload.response?.message ?? ""}`;
+      }
+      return null;
+    }
+    case "MEDIASTACK": {
+      const payload = data as {
+        error?: { code?: string; message?: string };
+      };
+      if (payload.error) {
+        return `Mediastack: ${payload.error.message ?? payload.error.code ?? "error"}`;
+      }
+      return null;
+    }
+    case "MARKETAUX": {
+      const payload = data as { error?: { message?: string } };
+      if (payload.error?.message) {
+        return `MarketAux: ${payload.error.message}`;
+      }
+      return null;
+    }
+    default:
+      return null;
+  }
+}
 
 function parsePayload(spec: ProviderSpec, data: unknown): RankedDocument[] {
-  const now = new Date().toISOString();
-
   switch (spec.sourceType) {
     case "REDDIT": {
       const posts =
@@ -274,6 +470,85 @@ function parsePayload(spec: ProviderSpec, data: unknown): RankedDocument[] {
         publishedAt: a.publishedAt ?? null,
       }));
     }
+    case "GNEWS": {
+      const articles = (data as { articles?: NewsArticle[] }).articles ?? [];
+      return articles.slice(0, MAX_ITEMS_PER_SOURCE).map((a) => ({
+        title: a.title ?? "Article",
+        url: a.url ?? spec.endpoint,
+        text: `${a.title ?? ""} ${clip(a.description || a.content, 1000)}`.trim(),
+        source: "GNews",
+        publishedAt: a.publishedAt ?? null,
+      }));
+    }
+    case "CURRENTS": {
+      const items =
+        (data as {
+          news?: (NewsArticle & { published?: string })[];
+        }).news ?? [];
+      return items.slice(0, MAX_ITEMS_PER_SOURCE).map((a) => {
+        const item = a;
+        return {
+          title: item.title ?? "Article",
+          url: item.url ?? spec.endpoint,
+          text: `${item.title ?? ""} ${clip(item.description, 1000)}`.trim(),
+          source: "Currents",
+          publishedAt: item.publishedAt ?? item.published ?? null,
+        };
+      });
+    }
+    case "MARKETAUX": {
+      const items = (data as { data?: NewsArticle[] }).data ?? [];
+      return items.slice(0, MAX_ITEMS_PER_SOURCE).map((a) => {
+        const row = a as NewsArticle & {
+          published_at?: string;
+          entities?: MarketAuxEntity[];
+        };
+        const entities = (row.entities ?? [])
+          .map((e) => e.name ?? e.symbol)
+          .filter(Boolean)
+          .join(" ");
+        return {
+          title: row.title ?? "Article",
+          url: row.url ?? spec.endpoint,
+          text: `${row.title ?? ""} ${clip(row.description, 1000)} ${entities}`.trim(),
+          source: "MarketAux",
+          publishedAt: row.publishedAt ?? row.published_at ?? null,
+        };
+      });
+    }
+    case "GUARDIAN": {
+      const results =
+        (data as {
+          response?: {
+            results?: {
+              webTitle?: string;
+              webUrl?: string;
+              webPublicationDate?: string;
+              fields?: { trailText?: string };
+            }[];
+          };
+        }).response?.results ?? [];
+      return results.slice(0, MAX_ITEMS_PER_SOURCE).map((r) => ({
+        title: r.webTitle ?? "Article",
+        url: r.webUrl ?? spec.endpoint,
+        text: `${r.webTitle ?? ""} ${clip(r.fields?.trailText, 1000)}`.trim(),
+        source: "The Guardian",
+        publishedAt: r.webPublicationDate ?? null,
+      }));
+    }
+    case "MEDIASTACK": {
+      const articles = (data as { data?: NewsArticle[] }).data ?? [];
+      return articles.slice(0, MAX_ITEMS_PER_SOURCE).map((a) => {
+        const row = a as NewsArticle & { published_at?: string };
+        return {
+          title: row.title ?? "Article",
+          url: row.url ?? spec.endpoint,
+          text: `${row.title ?? ""} ${clip(row.description, 1000)}`.trim(),
+          source: "Mediastack",
+          publishedAt: row.publishedAt ?? row.published_at ?? null,
+        };
+      });
+    }
     case "GOOGLE_SEARCH": {
       const items = (data as { items?: GoogleItem[] }).items ?? [];
       return items.slice(0, MAX_ITEMS_PER_SOURCE).map((i) => ({
@@ -296,7 +571,7 @@ function parsePayload(spec: ProviderSpec, data: unknown): RankedDocument[] {
       }));
     }
     case "WEB":
-      return []; // WEB is parsed from HTML text, handled in ingestProvider.
+      return [];
   }
   return [];
 }
@@ -383,23 +658,9 @@ export async function ingestProvider(spec: ProviderSpec): Promise<{
       return fail("Invalid JSON payload", { httpStatus, contentType });
     }
 
-    if (spec.sourceType === "NEWS_API") {
-      const payload = data as { status?: string; code?: string; message?: string };
-      if (payload.status && payload.status !== "ok") {
-        return fail(
-          `NewsAPI status=${payload.status} (${payload.code ?? "n/a"}: ${payload.message ?? ""})`,
-          { httpStatus, contentType }
-        );
-      }
-    }
-    if (spec.sourceType === "GOOGLE_SEARCH") {
-      const payload = data as { error?: { message?: string } };
-      if (payload.error) {
-        return fail(`Google API error: ${payload.error.message ?? "unknown"}`, {
-          httpStatus,
-          contentType,
-        });
-      }
+    const apiError = checkApiPayload(spec, data);
+    if (apiError) {
+      return fail(apiError, { httpStatus, contentType });
     }
 
     const docs = parsePayload(spec, data);

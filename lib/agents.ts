@@ -6,6 +6,8 @@ import type {
 } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { formatDateDay } from "@/lib/format-date";
+import type { SourceDiagnostic } from "@/lib/sources";
 
 export type PipelineState =
   | "IDLE"
@@ -25,18 +27,7 @@ export interface SourceView {
   timestampFetched: string;
 }
 
-export interface SourceDiagnostic {
-  sourceId: string;
-  sourceType: string;
-  endpoint: string;
-  status: "ok" | "error";
-  httpStatus?: number;
-  contentType?: string;
-  itemsIngested: number;
-  errorReason?: string;
-  retriedWithBroaderQuery?: boolean;
-  checkedAt: string;
-}
+export type { SourceDiagnostic } from "@/lib/sources";
 
 export interface ReportView {
   id: string;
@@ -60,12 +51,16 @@ export interface DeliveryChannelView {
   recipientList: string[];
 }
 
+export type KeywordMatchMode = "OR" | "AND";
+
 export interface AgentView {
   id: string;
   name: string;
   topicKeywords: string[];
   cronSchedule: string;
   systemPrompt: string;
+  relevanceMinScore: number;
+  keywordMatchMode: KeywordMatchMode;
   status: AgentStatus;
   pipelineState: PipelineState;
   lastReportAt: string | null;
@@ -113,6 +108,9 @@ function toAgentView(agent: AgentWithRelations): AgentView {
     topicKeywords: agent.topicKeywords,
     cronSchedule: agent.cronSchedule,
     systemPrompt: agent.systemPrompt,
+    relevanceMinScore: agent.relevanceMinScore,
+    keywordMatchMode:
+      agent.keywordMatchMode === "AND" ? "AND" : ("OR" as KeywordMatchMode),
     status: agent.status as AgentStatus,
     pipelineState: derivePipelineState(
       agent.status as AgentStatus,
@@ -167,31 +165,27 @@ export async function getAllRuns(): Promise<RunView[]> {
   }));
 }
 
-const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+export { cronToHuman } from "@/lib/cron";
+export { formatDate, formatDateDay } from "@/lib/format-date";
 
-export function cronToHuman(cron: string): string {
-  const parts = cron.trim().split(/\s+/);
-  if (parts.length !== 5) return cron;
-  const [min, hour, , , dow] = parts;
-  const time =
-    hour.includes("*") || hour.includes("/")
-      ? null
-      : `${hour.padStart(2, "0")}:${min.padStart(2, "0")}`;
-
-  if (hour.startsWith("*/")) return `Every ${hour.slice(2)} hours`;
-  if (dow !== "*") {
-    const day = DOW[Number(dow)] ?? `day ${dow}`;
-    return time ? `Weekly on ${day} at ${time}` : `Weekly on ${day}`;
-  }
-  return time ? `Daily at ${time}` : "Daily";
+export interface DailyReportGroup {
+  day: string;
+  runs: RunView[];
 }
 
-export function formatDate(iso: string | null): string {
-  if (!iso) return "Never";
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+export async function getDailyReportGroups(): Promise<DailyReportGroup[]> {
+  const runs = await getAllRuns();
+  const byDay = new Map<string, RunView[]>();
+
+  for (const run of runs) {
+    const day = formatDateDay(run.report.timestamp);
+    const list = byDay.get(day) ?? [];
+    list.push(run);
+    byDay.set(day, list);
+  }
+
+  return Array.from(byDay.entries()).map(([day, dayRuns]) => ({
+    day,
+    runs: dayRuns,
+  }));
 }

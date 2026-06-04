@@ -8,35 +8,35 @@ const STATE_CONFIG: Record<
   IDLE: {
     badgeColor: "bg-slate-100 text-slate-700",
     pulseAnimation: false,
-    description: "Agent awaiting scheduled cron trigger.",
+    description: "Waiting for the next scheduled run.",
   },
   FETCHING: {
-    badgeColor: "bg-amber-100 text-amber-700",
+    badgeColor: "bg-amber-100 text-amber-800",
     pulseAnimation: true,
-    description: "Connecting to external HTTP endpoints, parsing upstream payloads.",
+    description: "Pulling articles from news and web sources.",
   },
   SYNTHESIZING: {
-    badgeColor: "bg-blue-100 text-blue-700",
+    badgeColor: "bg-blue-100 text-blue-800",
     pulseAnimation: true,
-    description: "Injecting context matrix into target model API context window.",
+    description: "Building the report with the LLM.",
   },
   DELIVERING: {
-    badgeColor: "bg-indigo-100 text-indigo-700",
+    badgeColor: "bg-indigo-100 text-indigo-800",
     pulseAnimation: true,
-    description: "Dispatching payload buffers via target protocol webhooks.",
+    description: "Sending to configured delivery channels.",
   },
   COMPLETED: {
-    badgeColor: "bg-emerald-100 text-emerald-700",
+    badgeColor: "bg-emerald-100 text-emerald-800",
     pulseAnimation: false,
-    description: "Report successfully parsed and distributed.",
+    description: "Latest run finished successfully.",
   },
 };
 
 const STEPS: { key: PipelineState; label: string }[] = [
-  { key: "FETCHING", label: "Fetching" },
-  { key: "SYNTHESIZING", label: "Synthesizing" },
-  { key: "DELIVERING", label: "Delivering" },
-  { key: "COMPLETED", label: "Completed" },
+  { key: "FETCHING", label: "Fetch" },
+  { key: "SYNTHESIZING", label: "Synthesize" },
+  { key: "DELIVERING", label: "Deliver" },
+  { key: "COMPLETED", label: "Done" },
 ];
 
 const ORDER: PipelineState[] = [
@@ -52,37 +52,40 @@ export function PipelineStatusIndicator({ state }: { state: PipelineState }) {
   const currentIndex = ORDER.indexOf(state);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
         <span
           className={cn(
-            "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium",
+            "inline-flex w-fit items-center gap-2 rounded-full px-3 py-1 text-xs font-medium",
             config.badgeColor
           )}
         >
-          {config.pulseAnimation && (
+          {config.pulseAnimation ? (
             <span className="h-2 w-2 animate-pulse rounded-full bg-current" />
-          )}
-          {state}
+          ) : null}
+          {state.replace("_", " ")}
         </span>
         <span className="text-sm text-muted-foreground">{config.description}</span>
       </div>
 
-      <div className="flex items-center">
+      <div className="grid grid-cols-2 gap-4 sm:flex sm:items-center">
         {STEPS.map((step, i) => {
           const stepIndex = ORDER.indexOf(step.key);
           const done = currentIndex > stepIndex;
           const active = currentIndex === stepIndex;
           return (
-            <div key={step.key} className="flex flex-1 items-center last:flex-none">
-              <div className="flex flex-col items-center gap-1.5">
+            <div
+              key={step.key}
+              className="flex flex-1 items-center last:flex-none sm:contents"
+            >
+              <div className="flex flex-col items-center gap-2">
                 <div
                   className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold",
+                    "flex h-9 w-9 items-center justify-center rounded-full border text-xs font-semibold",
                     done && "border-primary bg-primary text-primary-foreground",
                     active &&
-                      "border-primary bg-primary/10 text-primary animate-pulse",
-                    !done && !active && "border-border bg-background text-muted-foreground"
+                      "border-primary bg-primary/10 text-primary ring-2 ring-primary/20",
+                    !done && !active && "border-border bg-white text-muted-foreground"
                   )}
                 >
                   {done ? "\u2713" : i + 1}
@@ -96,14 +99,14 @@ export function PipelineStatusIndicator({ state }: { state: PipelineState }) {
                   {step.label}
                 </span>
               </div>
-              {i < STEPS.length - 1 && (
+              {i < STEPS.length - 1 ? (
                 <div
                   className={cn(
-                    "mx-2 h-0.5 flex-1 rounded",
-                    currentIndex > stepIndex ? "bg-primary" : "bg-border"
+                    "mx-3 hidden h-0.5 flex-1 rounded sm:block",
+                    currentIndex > stepIndex ? "bg-primary/60" : "bg-border"
                   )}
                 />
-              )}
+              ) : null}
             </div>
           );
         })}

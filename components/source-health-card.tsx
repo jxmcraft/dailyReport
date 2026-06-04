@@ -2,7 +2,6 @@
 
 import { CheckCircle2, XCircle, RefreshCw } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate, type SourceDiagnostic } from "@/lib/agents";
 
 function StatusIcon({ status }: { status: "ok" | "error" }) {
@@ -18,18 +17,20 @@ export function SourceHealthCard({
 }: {
   diagnostics: SourceDiagnostic[] | null;
 }) {
-  if (!diagnostics || diagnostics.length === 0) return null;
+  if (!diagnostics || diagnostics.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        No source diagnostics from the latest run.
+      </p>
+    );
+  }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Source Health (last run)</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <div className="space-y-3">
         {diagnostics.map((d) => (
           <div
             key={d.sourceId}
-            className="flex items-start gap-3 rounded-md border border-border p-3"
+            className="flex items-start gap-3 rounded-lg border border-border/60 bg-white p-4"
           >
             <StatusIcon status={d.status} />
             <div className="min-w-0 flex-1 space-y-1">
@@ -68,7 +69,6 @@ export function SourceHealthCard({
             </div>
           </div>
         ))}
-      </CardContent>
-    </Card>
+    </div>
   );
 }

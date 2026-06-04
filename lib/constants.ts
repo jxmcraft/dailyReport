@@ -1,0 +1,5 @@
+export const EXECUTION_TIMEOUT_MS = 180000;
+
+export const AGENT_STATUS_POLL_MS = 2500;
+export const DASHBOARD_LIVE_POLL_MS = 3000;
+export const PIPELINE_STAGE_TICK_MS = 1500;

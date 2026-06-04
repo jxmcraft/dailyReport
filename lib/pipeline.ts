@@ -12,6 +12,11 @@ import {
   type SourceDiagnostic,
 } from "@/lib/sources";
 import { rankDocuments } from "@/lib/ranking";
+import { buildOutputGuardrails } from "@/lib/report-intent";
+import {
+  DEFAULT_MAX_NEWS_AGE_DAYS,
+  filterRecentDocuments,
+} from "@/lib/recency";
 import type { SourceMetadata } from "@/types/agent";
 
 export type { SourceDiagnostic } from "@/lib/sources";
@@ -114,17 +119,28 @@ export async function executeAgentPipeline(agentId: string): Promise<void> {
       allDocs.push(...r.docs);
     }
 
-    const { ranked, lowConfidence } = rankDocuments(
+    const recentDocs = filterRecentDocuments(allDocs, DEFAULT_MAX_NEWS_AGE_DAYS);
+    const droppedStale = allDocs.length - recentDocs.length;
+
+    const { ranked, lowConfidence, relevantCount } = rankDocuments(
       agent.topicKeywords,
-      allDocs,
-      TOP_K
+      recentDocs,
+      TOP_K,
+      {
+        minScore: agent.relevanceMinScore,
+        matchMode: agent.keywordMatchMode === "AND" ? "AND" : "OR",
+      }
     );
 
     // Nothing relevant found: record a clear, actionable failure instead of
     // feeding the LLM noise (which produced off-topic reports before).
     if (ranked.length === 0) {
       const okSources = sourceDiagnostics.filter((d) => d.status === "ok").length;
-      const detail = `Fetched from ${specs.length} source(s) (${okSources} responded) but none matched the topic keywords [${agent.topicKeywords.join(", ") || "none set"}]. Add or refine topic keywords, or add a relevant webpage source.`;
+      const staleNote =
+        droppedStale > 0
+          ? ` ${droppedStale} article(s) were older than ${DEFAULT_MAX_NEWS_AGE_DAYS} days and excluded.`
+          : "";
+      const detail = `Fetched ${allDocs.length} article(s) from ${specs.length} source(s) (${okSources} responded); ${recentDocs.length} within the last ${DEFAULT_MAX_NEWS_AGE_DAYS} days.${staleNote} None passed relevance filtering for [${agent.topicKeywords.join(", ") || "none set"}] (min score ${agent.relevanceMinScore}, ${agent.keywordMatchMode} match, ${relevantCount} passed). Lower the relevance threshold, use broader keywords, or add API keys in .env.`;
       await prisma.intelligenceReport.create({
         data: {
           agentId,
@@ -144,6 +160,7 @@ export async function executeAgentPipeline(agentId: string): Promise<void> {
       `You are producing an intelligence report strictly about: ${agent.topicKeywords.join(", ") || agent.name}.`,
       "Use ONLY the numbered evidence provided. Cite claims with their [n] index and include source URLs.",
       "If the evidence is insufficient or off-topic, state that plainly and do not invent facts from prior knowledge.",
+      ...buildOutputGuardrails(agent.systemPrompt),
     ].join(" ");
     const fullSystemPrompt = `${agent.systemPrompt}\n\n${guardrail}`;
 
