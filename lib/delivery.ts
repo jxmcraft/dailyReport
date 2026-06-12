@@ -1,11 +1,15 @@
 import type { DeliveryChannel } from "@prisma/client";
-import nodemailer from "nodemailer";
 
 import { EXECUTION_TIMEOUT_MS } from "@/lib/constants";
-import { envSecret } from "@/lib/env";
-import { markdownToEmailHtml } from "@/lib/markdown-email";
+import {
+  generateApprovalToken,
+  requiresEmailApproval,
+  sendReviewerApprovalRequest,
+} from "@/lib/email-approval";
+import { sendEmaileeEmail } from "@/lib/email-smtp";
+import { prisma } from "@/lib/prisma";
+
 const DISCORD_CONTENT_LIMIT = 2000;
-const EMAIL_SUBJECT = "PulseAgent Intelligence Report";
 
 async function postJson(url: string, body: unknown, headers: Record<string, string> = {}) {
   const response = await fetch(url, {
@@ -20,38 +24,15 @@ async function postJson(url: string, body: unknown, headers: Record<string, stri
   }
 }
 
-async function sendEmailSmtp(to: string[], text: string): Promise<void> {
-  const host = envSecret("SMTP_HOST");
-  const from = envSecret("SMTP_FROM");
-  if (!host || !from) {
-    throw new Error(
-      "Configure SMTP_HOST and SMTP_FROM in .env for email delivery (e.g. Gmail: smtp.gmail.com)."
-    );
-  }
-
-  const port = Number(envSecret("SMTP_PORT") ?? "587");
-  const user = envSecret("SMTP_USER");
-  const pass = envSecret("SMTP_PASS");
-
-  const transport = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: user && pass ? { user, pass } : undefined,
-  });
-
-  await transport.sendMail({
-    from,
-    to,
-    subject: EMAIL_SUBJECT,
-    text,
-    html: markdownToEmailHtml(text),
-  });
+export interface DispatchContext {
+  reportId: string;
+  agentName: string;
 }
 
 export async function dispatchToChannel(
   channel: DeliveryChannel,
-  markdown: string
+  markdown: string,
+  ctx?: DispatchContext
 ): Promise<void> {
   switch (channel.target) {
     case "SLACK":
@@ -63,11 +44,43 @@ export async function dispatchToChannel(
       });
       return;
     case "EMAIL": {
-      const to = channel.recipientList;
-      if (to.length === 0) {
-        throw new Error("No email recipients configured for this agent.");
+      if (channel.recipientList.length === 0) {
+        throw new Error("No emailee addresses configured for this agent.");
       }
-      await sendEmailSmtp(to, markdown);
+
+      if (requiresEmailApproval(channel)) {
+        if (!ctx?.reportId) {
+          throw new Error("Report ID is required for approval-gated email delivery.");
+        }
+        const { token, hash } = generateApprovalToken();
+        await prisma.intelligenceReport.update({
+          where: { id: ctx.reportId },
+          data: {
+            emailDeliveryStatus: "PENDING_REVIEW",
+            emailApprovalTokenHash: hash,
+          },
+        });
+        await sendReviewerApprovalRequest({
+          reportId: ctx.reportId,
+          agentName: ctx.agentName,
+          markdown,
+          channel,
+          token,
+        });
+        return;
+      }
+
+      await sendEmaileeEmail({
+        to: channel.recipientList,
+        markdown,
+        agentName: ctx?.agentName ?? "PulseAgent",
+      });
+      if (ctx?.reportId) {
+        await prisma.intelligenceReport.update({
+          where: { id: ctx.reportId },
+          data: { emailDeliveryStatus: "NOT_APPLICABLE" },
+        });
+      }
       return;
     }
   }

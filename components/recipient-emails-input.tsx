@@ -13,11 +13,13 @@ export function RecipientEmailsInput({
   emails,
   onEmailsChange,
   name,
+  placeholder = "name@example.com",
 }: {
   emails: string[];
   onEmailsChange: (emails: string[]) => void;
   /** When set, writes comma-separated value for native form submit. */
   name?: string;
+  placeholder?: string;
 }) {
   const [draft, setDraft] = useState("");
   const [hint, setHint] = useState<string | null>(null);
@@ -88,7 +90,7 @@ export function RecipientEmailsInput({
               addFromDraft();
             }
           }}
-          placeholder="name@example.com"
+          placeholder={placeholder}
           className={recipientInputClass}
         />
         <Button type="button" variant="outline" onClick={addFromDraft}>

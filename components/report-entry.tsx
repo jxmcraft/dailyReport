@@ -3,7 +3,7 @@
 import ReactMarkdown from "react-markdown";
 
 import { CollapsibleSection } from "@/components/collapsible-section";
-import { ReportStatusBadge } from "@/components/status-badge";
+import { EmailDeliveryStatusBadge, ReportStatusBadge } from "@/components/status-badge";
 import { SourcesAccordion } from "@/components/sources-accordion";
 import { formatDate } from "@/lib/format-date";
 import type { ReportView } from "@/lib/agents";
@@ -16,6 +16,7 @@ export type ReportEntryData = Pick<
   | "rawIngestedDataCount"
   | "generatedMarkdown"
   | "sourcesUsed"
+  | "emailDeliveryStatus"
 >;
 
 export function ReportEntry({
@@ -37,7 +38,12 @@ export function ReportEntry({
       title={formatDate(report.timestamp)}
       subtitle={subtitle}
       defaultOpen={defaultOpen}
-      badge={<ReportStatusBadge status={report.status} />}
+      badge={
+        <span className="flex flex-wrap items-center gap-2">
+          <ReportStatusBadge status={report.status} />
+          <EmailDeliveryStatusBadge status={report.emailDeliveryStatus} />
+        </span>
+      }
     >
       <div className="prose-report rounded-lg border border-border/60 bg-white p-5">
         <ReactMarkdown>{report.generatedMarkdown}</ReactMarkdown>

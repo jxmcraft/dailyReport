@@ -8,6 +8,10 @@ import { SettingsSaveFooter } from "@/components/settings-save-footer";
 import { useSettingsSave } from "@/hooks/use-settings-save";
 import type { DeliveryChannelView } from "@/lib/agents";
 
+function listsEqual(a: string[], b: string[]) {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
 export function DeliverySettings({
   agentId,
   channel,
@@ -18,24 +22,41 @@ export function DeliverySettings({
   const [target, setTarget] = useState(channel?.target ?? "SLACK");
   const [webhookUrl, setWebhookUrl] = useState(channel?.webhookUrl ?? "");
   const [emails, setEmails] = useState<string[]>(channel?.recipientList ?? []);
+  const [approvers, setApprovers] = useState<string[]>(channel?.approverList ?? []);
+  const [requireEmailApproval, setRequireEmailApproval] = useState(
+    channel?.requireEmailApproval ?? true
+  );
   const [saved, setSaved] = useState({
     target: channel?.target ?? "SLACK",
     webhookUrl: channel?.webhookUrl ?? "",
     emails: channel?.recipientList ?? [],
+    approvers: channel?.approverList ?? [],
+    requireEmailApproval: channel?.requireEmailApproval ?? true,
   });
-
-  const emailsDirty =
-    emails.length !== saved.emails.length ||
-    emails.some((e, i) => e !== saved.emails[i]);
 
   const dirty =
     target !== saved.target ||
     webhookUrl !== saved.webhookUrl ||
-    emailsDirty;
+    !listsEqual(emails, saved.emails) ||
+    !listsEqual(approvers, saved.approvers) ||
+    requireEmailApproval !== saved.requireEmailApproval;
 
   const { error, pending, save } = useSettingsSave(async () => {
-    await updateDeliverySettings(agentId, target, webhookUrl, emails.join(", "));
-    setSaved({ target, webhookUrl, emails: [...emails] });
+    await updateDeliverySettings(
+      agentId,
+      target,
+      webhookUrl,
+      emails.join(", "),
+      approvers.join(", "),
+      requireEmailApproval
+    );
+    setSaved({
+      target,
+      webhookUrl,
+      emails: [...emails],
+      approvers: [...approvers],
+      requireEmailApproval,
+    });
   });
 
   return (
@@ -47,6 +68,10 @@ export function DeliverySettings({
         onWebhookUrlChange={setWebhookUrl}
         emails={emails}
         onEmailsChange={setEmails}
+        approvers={approvers}
+        onApproversChange={setApprovers}
+        requireEmailApproval={requireEmailApproval}
+        onRequireEmailApprovalChange={setRequireEmailApproval}
       />
       <SettingsSaveFooter
         dirty={dirty}

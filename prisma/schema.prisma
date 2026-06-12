@@ -32,6 +32,13 @@ enum ExecutionStatus {
   CRITICAL_ERROR
 }
 
+enum EmailDeliveryStatus {
+  NOT_APPLICABLE
+  PENDING_REVIEW
+  DISTRIBUTED
+  EXPIRED
+}
+
 model Agent {
   id               String               @id @default(uuid())
   name             String
@@ -58,22 +65,28 @@ model DataSource {
 }
 
 model DeliveryChannel {
-  id            String         @id @default(uuid())
-  agentId       String
-  agent         Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  target        DeliveryTarget
-  webhookUrl    String
-  recipientList String[]
+  id                   String         @id @default(uuid())
+  agentId              String
+  agent                Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  target               DeliveryTarget
+  webhookUrl           String
+  recipientList        String[]
+  approverList         String[]       @default([])
+  requireEmailApproval Boolean        @default(true)
 }
 
 model IntelligenceReport {
-  id                   String          @id @default(uuid())
-  agentId              String
-  agent                Agent           @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  timestamp            DateTime        @default(now())
-  rawIngestedDataCount Int
-  generatedMarkdown    String          @db.Text
-  status               ExecutionStatus
-  sourcesUsed          Json
-  sourceDiagnostics    Json?
+  id                     String               @id @default(uuid())
+  agentId                String
+  agent                  Agent                @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  timestamp              DateTime             @default(now())
+  rawIngestedDataCount   Int
+  generatedMarkdown      String               @db.Text
+  status                 ExecutionStatus
+  sourcesUsed            Json
+  sourceDiagnostics      Json?
+  emailDeliveryStatus    EmailDeliveryStatus  @default(NOT_APPLICABLE)
+  emailApprovalTokenHash String?
+  emailApprovedAt        DateTime?
+  emailApprovedBy        String?
 }

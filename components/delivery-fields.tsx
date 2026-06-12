@@ -15,7 +15,13 @@ export function DeliveryFields({
   onWebhookUrlChange,
   emails,
   onEmailsChange,
+  approvers,
+  onApproversChange,
+  requireEmailApproval,
+  onRequireEmailApprovalChange,
   recipientsFieldName,
+  approversFieldName,
+  requireApprovalFieldName,
 }: {
   target: string;
   onTargetChange: (value: string) => void;
@@ -23,9 +29,17 @@ export function DeliveryFields({
   onWebhookUrlChange: (value: string) => void;
   emails: string[];
   onEmailsChange: (emails: string[]) => void;
+  approvers: string[];
+  onApproversChange: (emails: string[]) => void;
+  requireEmailApproval: boolean;
+  onRequireEmailApprovalChange: (value: boolean) => void;
   /** When set, writes comma-separated recipients for native form submit. */
   recipientsFieldName?: string;
+  approversFieldName?: string;
+  requireApprovalFieldName?: string;
 }) {
+  const isEmail = target === "EMAIL";
+
   return (
     <div className="space-y-5">
       <p className="text-sm leading-relaxed text-muted-foreground">{SMTP_HINT}</p>
@@ -56,17 +70,74 @@ export function DeliveryFields({
         />
       </label>
 
-      <div className="space-y-2">
-        <span className="text-sm font-medium">Recipient emails</span>
-        <span className="block text-xs text-muted-foreground">
-          Required for Email. Add one or more addresses.
-        </span>
-        <RecipientEmailsInput
-          emails={emails}
-          onEmailsChange={onEmailsChange}
-          name={recipientsFieldName}
-        />
-      </div>
+      {isEmail ? (
+        <>
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              checked={requireEmailApproval}
+              onChange={(e) => onRequireEmailApprovalChange(e.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-border"
+            />
+            <span className="space-y-1">
+              <span className="block text-sm font-medium">Require reviewer approval</span>
+              <span className="block text-xs text-muted-foreground">
+                Send to designated reviewers first; any one can approve to distribute to
+                emailees.
+              </span>
+            </span>
+            {requireApprovalFieldName ? (
+              <input
+                type="hidden"
+                name={requireApprovalFieldName}
+                value={requireEmailApproval ? "true" : "false"}
+                readOnly
+              />
+            ) : null}
+          </label>
+
+          {requireEmailApproval ? (
+            <div className="space-y-2">
+              <span className="text-sm font-medium">Designated reviewers</span>
+              <span className="block text-xs text-muted-foreground">
+                Receive the report first with an approve link. Any one reviewer can approve.
+              </span>
+              <RecipientEmailsInput
+                emails={approvers}
+                onEmailsChange={onApproversChange}
+                name={approversFieldName}
+                placeholder="Add reviewer email…"
+              />
+            </div>
+          ) : null}
+
+          <div className="space-y-2">
+            <span className="text-sm font-medium">Emailees</span>
+            <span className="block text-xs text-muted-foreground">
+              Final recipients after approval (or immediately if approval is off). Outlook and
+              M365 distribution groups work as normal SMTP addresses.
+            </span>
+            <RecipientEmailsInput
+              emails={emails}
+              onEmailsChange={onEmailsChange}
+              name={recipientsFieldName}
+              placeholder="Add emailee email…"
+            />
+          </div>
+        </>
+      ) : (
+        <div className="space-y-2">
+          <span className="text-sm font-medium">Recipient emails</span>
+          <span className="block text-xs text-muted-foreground">
+            Only used when target is Email.
+          </span>
+          <RecipientEmailsInput
+            emails={emails}
+            onEmailsChange={onEmailsChange}
+            name={recipientsFieldName}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -76,6 +147,8 @@ export function NewAgentDeliveryFields() {
   const [target, setTarget] = useState("SLACK");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [emails, setEmails] = useState<string[]>([]);
+  const [approvers, setApprovers] = useState<string[]>([]);
+  const [requireEmailApproval, setRequireEmailApproval] = useState(true);
 
   return (
     <>
@@ -88,7 +161,13 @@ export function NewAgentDeliveryFields() {
         onWebhookUrlChange={setWebhookUrl}
         emails={emails}
         onEmailsChange={setEmails}
+        approvers={approvers}
+        onApproversChange={setApprovers}
+        requireEmailApproval={requireEmailApproval}
+        onRequireEmailApprovalChange={setRequireEmailApproval}
         recipientsFieldName="recipients"
+        approversFieldName="approvers"
+        requireApprovalFieldName="requireEmailApproval"
       />
     </>
   );

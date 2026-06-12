@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import type { AgentStatus, ReportStatus } from "@/lib/agents";
+import type { AgentStatus, EmailDeliveryStatus, ReportStatus } from "@/lib/agents";
 
 const AGENT_LABELS: Record<AgentStatus, string> = {
   ACTIVE: "Active",
@@ -43,6 +43,37 @@ export function ReportStatusBadge({ status }: { status: ReportStatus }) {
   return (
     <span className={cn(badgeBase, REPORT_COLORS[status])}>
       {REPORT_LABELS[status]}
+    </span>
+  );
+}
+
+const EMAIL_DELIVERY_LABELS: Record<
+  Exclude<EmailDeliveryStatus, "NOT_APPLICABLE">,
+  string
+> = {
+  PENDING_REVIEW: "Awaiting approval",
+  DISTRIBUTED: "Sent to emailees",
+  EXPIRED: "Approval expired",
+};
+
+const EMAIL_DELIVERY_COLORS: Record<
+  Exclude<EmailDeliveryStatus, "NOT_APPLICABLE">,
+  string
+> = {
+  PENDING_REVIEW: "bg-violet-50 text-violet-800 ring-violet-600/20",
+  DISTRIBUTED: "bg-sky-50 text-sky-800 ring-sky-600/20",
+  EXPIRED: "bg-amber-50 text-amber-800 ring-amber-600/20",
+};
+
+export function EmailDeliveryStatusBadge({
+  status,
+}: {
+  status: EmailDeliveryStatus;
+}) {
+  if (status === "NOT_APPLICABLE") return null;
+  return (
+    <span className={cn(badgeBase, EMAIL_DELIVERY_COLORS[status])}>
+      {EMAIL_DELIVERY_LABELS[status]}
     </span>
   );
 }

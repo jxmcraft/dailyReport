@@ -71,7 +71,9 @@ export async function updateDeliverySettings(
   agentId: string,
   target: string,
   webhookUrl: string,
-  recipientsRaw: string
+  recipientsRaw: string,
+  approversRaw: string,
+  requireEmailApproval: boolean
 ) {
   const deliveryTarget = parseDeliveryTarget(target);
 
@@ -84,7 +86,15 @@ export async function updateDeliverySettings(
   const channel = agent.deliveryChannels[0];
   const trimmedWebhook = webhookUrl.trim();
 
-  if (!hasDeliveryConfig(deliveryTarget, trimmedWebhook, recipientsRaw)) {
+  if (
+    !hasDeliveryConfig(
+      deliveryTarget,
+      trimmedWebhook,
+      recipientsRaw,
+      approversRaw,
+      requireEmailApproval
+    )
+  ) {
     if (channel) {
       await prisma.deliveryChannel.delete({ where: { id: channel.id } });
     }
@@ -95,7 +105,9 @@ export async function updateDeliverySettings(
   const data = buildDeliveryChannelData(
     deliveryTarget,
     trimmedWebhook,
-    recipientsRaw
+    recipientsRaw,
+    approversRaw,
+    requireEmailApproval
   );
 
   if (channel) {

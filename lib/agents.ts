@@ -2,6 +2,7 @@ import type {
   Agent,
   DataSource,
   DeliveryChannel,
+  EmailDeliveryStatus,
   IntelligenceReport,
 } from "@prisma/client";
 
@@ -29,6 +30,8 @@ export interface SourceView {
 
 export type { SourceDiagnostic } from "@/lib/sources";
 
+export type { EmailDeliveryStatus };
+
 export interface ReportView {
   id: string;
   timestamp: string;
@@ -37,6 +40,7 @@ export interface ReportView {
   status: ReportStatus;
   sourcesUsed: SourceView[];
   sourceDiagnostics: SourceDiagnostic[] | null;
+  emailDeliveryStatus: EmailDeliveryStatus;
 }
 
 export interface DataSourceView {
@@ -49,6 +53,8 @@ export interface DeliveryChannelView {
   target: string;
   webhookUrl: string;
   recipientList: string[];
+  approverList: string[];
+  requireEmailApproval: boolean;
 }
 
 export type KeywordMatchMode = "OR" | "AND";
@@ -85,6 +91,7 @@ function toReportView(report: IntelligenceReport): ReportView {
     sourcesUsed: (report.sourcesUsed as unknown as SourceView[]) ?? [],
     sourceDiagnostics:
       (report.sourceDiagnostics as unknown as SourceDiagnostic[]) ?? null,
+    emailDeliveryStatus: report.emailDeliveryStatus,
   };
 }
 
@@ -126,6 +133,8 @@ function toAgentView(agent: AgentWithRelations): AgentView {
       target: c.target,
       webhookUrl: c.webhookUrl,
       recipientList: c.recipientList,
+      approverList: c.approverList,
+      requireEmailApproval: c.requireEmailApproval,
     })),
     reports: reports.map(toReportView),
   };

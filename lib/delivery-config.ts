@@ -31,26 +31,57 @@ export function parseEmails(raw: string): string[] {
 export function buildDeliveryChannelData(
   target: DeliveryTarget,
   webhookUrl: string,
-  recipientsRaw: string
-): { webhookUrl: string; recipientList: string[] } {
+  recipientsRaw: string,
+  approversRaw: string,
+  requireEmailApproval: boolean
+): {
+  webhookUrl: string;
+  recipientList: string[];
+  approverList: string[];
+  requireEmailApproval: boolean;
+} {
   const recipients = parseEmails(recipientsRaw);
+  const approvers = parseEmails(approversRaw);
+
   if (target === "EMAIL") {
     if (recipients.length === 0) {
-      throw new Error("At least one recipient email is required for Email delivery.");
+      throw new Error("At least one emailee address is required for Email delivery.");
     }
-    return { webhookUrl: "", recipientList: recipients };
+    if (requireEmailApproval && approvers.length === 0) {
+      throw new Error(
+        "At least one designated reviewer is required when approval is enabled."
+      );
+    }
+    return {
+      webhookUrl: "",
+      recipientList: recipients,
+      approverList: approvers,
+      requireEmailApproval,
+    };
   }
   if (!webhookUrl) {
     throw new Error("Webhook URL is required for Slack and Discord.");
   }
-  return { webhookUrl, recipientList: [] };
+  return {
+    webhookUrl,
+    recipientList: [],
+    approverList: [],
+    requireEmailApproval: true,
+  };
 }
 
 export function hasDeliveryConfig(
   target: DeliveryTarget,
   webhookUrl: string,
-  recipientsRaw: string
+  recipientsRaw: string,
+  approversRaw = "",
+  requireEmailApproval = true
 ): boolean {
-  if (target === "EMAIL") return parseEmails(recipientsRaw).length > 0;
+  if (target === "EMAIL") {
+    const recipients = parseEmails(recipientsRaw);
+    if (recipients.length === 0) return false;
+    if (requireEmailApproval) return parseEmails(approversRaw).length > 0;
+    return true;
+  }
   return Boolean(webhookUrl.trim());
 }

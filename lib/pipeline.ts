@@ -181,12 +181,29 @@ export async function executeAgentPipeline(agentId: string): Promise<void> {
       timestampFetched: d.publishedAt ?? new Date().toISOString(),
     }));
 
-    // Delivery failures must not lose the report: dispatch best-effort, flag the
-    // run, and still persist the generated output to history.
+    const anySourceFailed = sourceDiagnostics.some((d) => d.status === "error");
+    const preliminaryPartial = anySourceFailed || lowConfidence;
+
+    const report = await prisma.intelligenceReport.create({
+      data: {
+        agentId,
+        rawIngestedDataCount: extractedSourceMeta.length,
+        generatedMarkdown: synthesizedMarkdownReport,
+        status: preliminaryPartial ? "PARTIAL_FAILURE" : "SUCCESS",
+        sourcesUsed: extractedSourceMeta as unknown as Prisma.InputJsonValue,
+        sourceDiagnostics: sourceDiagnostics as unknown as Prisma.InputJsonValue,
+        emailDeliveryStatus: "NOT_APPLICABLE",
+      },
+    });
+
+    // Delivery after persist so approval emails can link to reportId.
     let deliveryFailed = false;
     for (const channel of agent.deliveryChannels) {
       try {
-        await dispatchToChannel(channel, synthesizedMarkdownReport);
+        await dispatchToChannel(channel, synthesizedMarkdownReport, {
+          reportId: report.id,
+          agentName: agent.name,
+        });
       } catch (error) {
         deliveryFailed = true;
         console.warn(
@@ -196,19 +213,12 @@ export async function executeAgentPipeline(agentId: string): Promise<void> {
       }
     }
 
-    const anySourceFailed = sourceDiagnostics.some((d) => d.status === "error");
-    const partial = anySourceFailed || deliveryFailed || lowConfidence;
-
-    await prisma.intelligenceReport.create({
-      data: {
-        agentId,
-        rawIngestedDataCount: extractedSourceMeta.length,
-        generatedMarkdown: synthesizedMarkdownReport,
-        status: partial ? "PARTIAL_FAILURE" : "SUCCESS",
-        sourcesUsed: extractedSourceMeta as unknown as Prisma.InputJsonValue,
-        sourceDiagnostics: sourceDiagnostics as unknown as Prisma.InputJsonValue,
-      },
-    });
+    if (deliveryFailed && report.status === "SUCCESS") {
+      await prisma.intelligenceReport.update({
+        where: { id: report.id },
+        data: { status: "PARTIAL_FAILURE" },
+      });
+    }
   } catch (error) {
     await prisma.intelligenceReport.create({
       data: {

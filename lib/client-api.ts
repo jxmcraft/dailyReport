@@ -1,4 +1,9 @@
-import type { PipelineState, ReportStatus, SourceView } from "@/lib/agents";
+import type {
+  EmailDeliveryStatus,
+  PipelineState,
+  ReportStatus,
+  SourceView,
+} from "@/lib/agents";
 import type { SourceDiagnostic } from "@/lib/sources";
 
 export interface AgentLiveSummary {
@@ -24,6 +29,7 @@ export interface AgentStatusReport {
   generatedMarkdown: string;
   sourcesUsed: SourceView[];
   sourceDiagnostics: SourceDiagnostic[] | null;
+  emailDeliveryStatus: EmailDeliveryStatus;
 }
 
 export interface AgentStatusResponse {

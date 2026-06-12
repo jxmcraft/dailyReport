@@ -30,6 +30,7 @@ export async function GET(
           generatedMarkdown: latest.generatedMarkdown,
           sourcesUsed: latest.sourcesUsed,
           sourceDiagnostics: latest.sourceDiagnostics,
+          emailDeliveryStatus: latest.emailDeliveryStatus,
         }
       : null,
   });

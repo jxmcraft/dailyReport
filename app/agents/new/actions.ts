@@ -45,6 +45,8 @@ export async function createAgent(formData: FormData) {
   const target = parseDeliveryTarget(get("target") || "SLACK");
   const webhookUrl = get("webhookUrl");
   const recipientsRaw = get("recipients");
+  const approversRaw = get("approvers");
+  const requireEmailApproval = get("requireEmailApproval") !== "false";
   const systemPrompt =
     get("systemPrompt") ||
     `Summarize the latest updates about ${topicKeywords.join(", ") || name} in Markdown with sections and bullet points.`;
@@ -68,12 +70,24 @@ export async function createAgent(formData: FormData) {
           authSecretKeyRef: "NONE",
         })),
       },
-      deliveryChannels: hasDeliveryConfig(target, webhookUrl, recipientsRaw)
+      deliveryChannels: hasDeliveryConfig(
+        target,
+        webhookUrl,
+        recipientsRaw,
+        approversRaw,
+        requireEmailApproval
+      )
         ? {
             create: [
               {
                 target,
-                ...buildDeliveryChannelData(target, webhookUrl, recipientsRaw),
+                ...buildDeliveryChannelData(
+                  target,
+                  webhookUrl,
+                  recipientsRaw,
+                  approversRaw,
+                  requireEmailApproval
+                ),
               },
             ],
           }
