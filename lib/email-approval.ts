@@ -1,8 +1,9 @@
 import { createHash, randomBytes } from "crypto";
 import type { DeliveryChannel, EmailDeliveryStatus } from "@prisma/client";
 
+import { getAppBaseUrl } from "@/lib/app-url";
 import { EMAIL_APPROVAL_TTL_MS } from "@/lib/constants";
-import { sendEmaileeEmail, sendReviewerEmail } from "@/lib/email-smtp";
+import { sendEmaileeEmail, sendReviewerEmail } from "@/lib/email-delivery";
 import { envSecret } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
 
@@ -36,9 +37,8 @@ export function hashApprovalToken(token: string): string {
 }
 
 export function buildApprovalUrl(reportId: string, token: string): string {
-  const base = (envSecret("APP_URL") ?? "http://localhost:3000").replace(/\/$/, "");
   const params = new URLSearchParams({ reportId, token });
-  return `${base}/reports/approve?${params.toString()}`;
+  return `${getAppBaseUrl()}/reports/approve?${params.toString()}`;
 }
 
 export function isApprovalExpired(reportTimestamp: Date): boolean {

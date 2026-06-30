@@ -77,7 +77,7 @@ Timeouts (LLM, source fetch, poll interval) are configured on the **Settings** p
 
 **Security:** There is no authentication on the web UI or API routes. Treat the deployment as private until you add access control.
 
-**Azure / container deploy:** Not documented yet. You will need separate processes for `npm run start` (web) and `npm run scheduler`, plus managed PostgreSQL.
+**Azure / container deploy:** See [`docs/azure/DEPLOY.md`](docs/azure/DEPLOY.md). You need separate processes for `npm run start` (web) and `npm run scheduler`, plus managed PostgreSQL. Microsoft Graph setup: [`docs/azure/MICROSOFT_GRAPH.md`](docs/azure/MICROSOFT_GRAPH.md).
 
 ## Tests and quality
 

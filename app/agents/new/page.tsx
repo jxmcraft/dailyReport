@@ -7,9 +7,11 @@ import { PageHeader, PageShell } from "@/components/page-shell";
 import { NewAgentDeliveryFields } from "@/components/delivery-fields";
 import { inputClass } from "@/components/ui/form-classes";
 import { WebSourcesSection } from "@/components/web-sources-section";
+import { isMicrosoftGraphConfigured } from "@/lib/microsoft-graph";
 import { createAgent } from "./actions";
 
-export default function NewAgentPage() {
+export default async function NewAgentPage() {
+  const directorySearchEnabled = isMicrosoftGraphConfigured();
   return (
     <PageShell size="md">
       <PageHeader
@@ -92,7 +94,7 @@ export default function NewAgentPage() {
             <CardTitle className="text-base">Delivery</CardTitle>
           </CardHeader>
           <CardContent>
-            <NewAgentDeliveryFields />
+            <NewAgentDeliveryFields directorySearchEnabled={directorySearchEnabled} />
           </CardContent>
         </Card>
 

@@ -1,0 +1,38 @@
+# Local production-style smoke test (web + scheduler + Postgres).
+# Usage: docker compose -f docker-compose.azure-prep.yml up --build
+# Apply schema once: docker compose -f docker-compose.azure-prep.yml run --rm web npx prisma db push
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pulseagent
+      POSTGRES_PASSWORD: pulseagent
+      POSTGRES_DB: pulseagent
+    ports:
+      - "5433:5432"
+    volumes:
+      - pulseagent_pg:/var/lib/postgresql/data
+
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://pulseagent:pulseagent@postgres:5432/pulseagent?schema=public
+      APP_URL: http://localhost:3000
+    depends_on:
+      - postgres
+
+  scheduler:
+    build: .
+    command: ["npm", "run", "scheduler"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://pulseagent:pulseagent@postgres:5432/pulseagent?schema=public
+    depends_on:
+      - postgres
+
+volumes:
+  pulseagent_pg:

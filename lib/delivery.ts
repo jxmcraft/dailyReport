@@ -6,7 +6,7 @@ import {
   requiresEmailApproval,
   sendReviewerApprovalRequest,
 } from "@/lib/email-approval";
-import { sendEmaileeEmail } from "@/lib/email-smtp";
+import { sendEmaileeEmail } from "@/lib/email-delivery";
 import { prisma } from "@/lib/prisma";
 
 const DISCORD_CONTENT_LIMIT = 2000;

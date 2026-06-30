@@ -1,29 +1,5 @@
-import nodemailer from "nodemailer";
-
-import { envSecret } from "@/lib/env";
 import { markdownToEmailHtml } from "@/lib/markdown-email";
-
-async function getSmtpTransport() {
-  const host = envSecret("SMTP_HOST");
-  const from = envSecret("SMTP_FROM");
-  if (!host || !from) {
-    throw new Error(
-      "Configure SMTP_HOST and SMTP_FROM in .env for email delivery (e.g. Gmail: smtp.gmail.com)."
-    );
-  }
-  const port = Number(envSecret("SMTP_PORT") ?? "587");
-  const user = envSecret("SMTP_USER");
-  const pass = envSecret("SMTP_PASS");
-  return {
-    from,
-    transport: nodemailer.createTransport({
-      host,
-      port,
-      secure: port === 465,
-      auth: user && pass ? { user, pass } : undefined,
-    }),
-  };
-}
+import { graphFetch, requireGraphSenderUpn } from "@/lib/microsoft-graph";
 
 function escapeHtml(s: string): string {
   return s
@@ -33,29 +9,56 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export async function sendEmaileeViaSmtp(opts: {
+async function sendMailViaGraph(opts: {
+  to: string[];
+  subject: string;
+  text: string;
+  html: string;
+}): Promise<void> {
+  const sender = requireGraphSenderUpn();
+  const response = await graphFetch(
+    `/users/${encodeURIComponent(sender)}/sendMail`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        message: {
+          subject: opts.subject,
+          body: { contentType: "HTML", content: opts.html },
+          toRecipients: opts.to.map((address) => ({
+            emailAddress: { address },
+          })),
+        },
+        saveToSentItems: true,
+      }),
+    }
+  );
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Graph Mail.Send failed (${response.status}): ${text}`);
+  }
+}
+
+export async function sendEmaileeViaGraph(opts: {
   to: string[];
   markdown: string;
   agentName: string;
 }): Promise<void> {
-  const { from, transport } = await getSmtpTransport();
-  await transport.sendMail({
-    from,
+  const html = markdownToEmailHtml(opts.markdown);
+  await sendMailViaGraph({
     to: opts.to,
     subject: `PulseAgent Intelligence Report: ${opts.agentName}`,
     text: opts.markdown,
-    html: markdownToEmailHtml(opts.markdown),
+    html,
   });
 }
 
-export async function sendReviewerViaSmtp(opts: {
+export async function sendReviewerViaGraph(opts: {
   to: string[];
   agentName: string;
   markdown: string;
   approveUrl: string;
   emaileeCount: number;
 }): Promise<void> {
-  const { from, transport } = await getSmtpTransport();
   const recipientNote =
     opts.emaileeCount === 1
       ? "1 recipient"
@@ -86,31 +89,10 @@ export async function sendReviewerViaSmtp(opts: {
     opts.markdown,
   ].join("\n");
 
-  await transport.sendMail({
-    from,
+  await sendMailViaGraph({
     to: opts.to,
     subject: `[Review required] ${opts.agentName}`,
     text,
     html,
   });
-}
-
-/** @deprecated Use sendEmaileeViaSmtp or sendEmaileeEmail from email-delivery */
-export async function sendEmaileeEmail(opts: {
-  to: string[];
-  markdown: string;
-  agentName: string;
-}): Promise<void> {
-  return sendEmaileeViaSmtp(opts);
-}
-
-/** @deprecated Use sendReviewerViaSmtp or sendReviewerEmail from email-delivery */
-export async function sendReviewerEmail(opts: {
-  to: string[];
-  agentName: string;
-  markdown: string;
-  approveUrl: string;
-  emaileeCount: number;
-}): Promise<void> {
-  return sendReviewerViaSmtp(opts);
 }

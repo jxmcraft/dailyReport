@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "postinstall": "prisma generate",
-    "test:unit": "node --import tsx --test lib/recency.test.ts lib/api-auth.test.ts lib/email-approval.test.ts",
+    "test:unit": "node --import tsx --test lib/recency.test.ts lib/api-auth.test.ts lib/email-approval.test.ts lib/app-url.test.ts",
     "scheduler": "tsx --env-file=.env scripts/scheduler.ts"
   },
   "dependencies": {
@@ -25,7 +25,8 @@
     "react-markdown": "^10.1.0",
     "shadcn": "^4.10.0",
     "tailwind-merge": "^3.6.0",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "tsx": "^4.22.4"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.19",
@@ -38,7 +39,6 @@
     "postcss": "^8",
     "prisma": "^6.19.3",
     "tailwindcss": "^3.4.1",
-    "tsx": "^4.22.4",
     "typescript": "^5"
   }
 }

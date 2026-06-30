@@ -13,6 +13,11 @@ import { executeAgentPipeline } from "@/lib/pipeline";
 import { prisma } from "@/lib/prisma";
 import { optimizeSystemPrompt } from "@/lib/prompt-optimizer";
 import {
+  isMicrosoftGraphConfigured,
+  searchDirectory,
+  type DirectorySearchKind,
+} from "@/lib/microsoft-graph";
+import {
   validateScrapeUrl as validateScrapeUrlImpl,
   type ScrapeCheckResult,
 } from "@/lib/scrape-validation";
@@ -347,4 +352,14 @@ export async function sendReportEmail(reportId: string) {
   revalidatePath("/logs");
   revalidatePath("/reports");
   revalidatePath("/");
+}
+
+export async function searchDirectoryAction(
+  query: string,
+  kind: DirectorySearchKind = "all"
+) {
+  if (!isMicrosoftGraphConfigured()) {
+    throw new Error("Microsoft Graph directory search is not configured.");
+  }
+  return searchDirectory(query, kind);
 }

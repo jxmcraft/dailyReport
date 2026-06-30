@@ -24,6 +24,7 @@ import { TriggerButton } from "@/components/trigger-button";
 import { cronToHuman, getAgentById } from "@/lib/agents";
 import { pluralize } from "@/lib/pluralize";
 import { deliverySubtitle } from "@/lib/delivery-subtitle";
+import { isMicrosoftGraphConfigured } from "@/lib/microsoft-graph";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,7 @@ export default async function AgentDetailPage({
   const keywordSummary = `${cronToHuman(agent.cronSchedule)} · ${pluralize(agent.reportCount, "report")}`;
   const deliveryChannel = agent.deliveryChannels[0];
   const deliverySubtitleText = deliverySubtitle(deliveryChannel);
+  const directorySearchEnabled = isMicrosoftGraphConfigured();
   const scrapeUrls = agent.dataSources
     .filter((s) => s.sourceType === "CUSTOM_SCRAPE")
     .map((s) => s.apiEndpoint);
@@ -182,7 +184,11 @@ export default async function AgentDetailPage({
           subtitle={deliverySubtitleText}
           defaultOpen={false}
         >
-          <DeliverySettings agentId={agent.id} channel={deliveryChannel} />
+          <DeliverySettings
+            agentId={agent.id}
+            channel={deliveryChannel}
+            directorySearchEnabled={directorySearchEnabled}
+          />
         </CollapsibleSection>
       </CollapsibleGroup>
     </PageShell>

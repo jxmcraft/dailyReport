@@ -2,8 +2,11 @@ import { KeyRound, CheckCircle2, XCircle } from "lucide-react";
 
 import { PageHeader, PageShell } from "@/components/page-shell";
 import { getAgents } from "@/lib/agents";
+import { getAppBaseUrl } from "@/lib/app-url";
+import { resolveEmailProvider } from "@/lib/email-delivery";
 import { SMTP_ENV_KEYS } from "@/lib/delivery-config";
 import { isEnvConfigured } from "@/lib/env";
+import { isMicrosoftGraphConfigured } from "@/lib/microsoft-graph";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +14,7 @@ export default async function IntegrationsPage() {
   const agents = await getAgents();
 
   const refs = new Set<string>([
+    "APP_URL",
     "OPENROUTER_API_KEY",
     "DEEPSEEK_API_KEY",
     "NEWS_API_KEY",
@@ -23,6 +27,11 @@ export default async function IntegrationsPage() {
     "GOOGLE_SEARCH_CX",
     "REDDIT_USER",
     "EMAIL_APPROVAL_SECRET",
+    "EMAIL_PROVIDER",
+    "AZURE_TENANT_ID",
+    "AZURE_CLIENT_ID",
+    "AZURE_CLIENT_SECRET",
+    "GRAPH_SENDER_UPN",
     "API_SECRET",
   ]);
   for (const agent of agents) {
@@ -37,8 +46,13 @@ export default async function IntegrationsPage() {
     a.deliveryChannels.some((c) => c.target === "EMAIL")
   );
   if (hasEmailDelivery) {
-    for (const key of SMTP_ENV_KEYS) refs.add(key);
+    if (resolveEmailProvider() === "smtp") {
+      for (const key of SMTP_ENV_KEYS) refs.add(key);
+    }
   }
+
+  const resolvedAppUrl = getAppBaseUrl();
+  const graphReady = isMicrosoftGraphConfigured();
 
   const secrets = Array.from(refs)
     .sort()
@@ -80,6 +94,19 @@ export default async function IntegrationsPage() {
           ))}
         </ul>
       </div>
+
+      {hasEmailDelivery ? (
+        <div className="mt-6 rounded-xl border border-border/70 bg-slate-50/80 px-5 py-4 text-sm text-muted-foreground">
+          <p>
+            <span className="font-medium text-foreground">Resolved approval base URL:</span>{" "}
+            <code className="rounded bg-white px-1.5 py-0.5 text-xs">{resolvedAppUrl}</code>
+          </p>
+          <p className="mt-2">
+            Email provider: <strong>{resolveEmailProvider()}</strong>
+            {graphReady ? " · Graph directory search enabled" : ""}
+          </p>
+        </div>
+      ) : null}
 
       <p className="mt-6 text-sm leading-relaxed text-muted-foreground">
         Add keys to <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">.env</code>, save the file, then restart{" "}

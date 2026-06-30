@@ -15,9 +15,11 @@ function listsEqual(a: string[], b: string[]) {
 export function DeliverySettings({
   agentId,
   channel,
+  directorySearchEnabled = false,
 }: {
   agentId: string;
   channel?: DeliveryChannelView;
+  directorySearchEnabled?: boolean;
 }) {
   const [target, setTarget] = useState(channel?.target ?? "SLACK");
   const [webhookUrl, setWebhookUrl] = useState(channel?.webhookUrl ?? "");
@@ -81,6 +83,7 @@ export function DeliverySettings({
         onRequireEmailApprovalChange={setRequireEmailApproval}
         autoSendEmail={autoSendEmail}
         onAutoSendEmailChange={setAutoSendEmail}
+        directorySearchEnabled={directorySearchEnabled}
       />
       <SettingsSaveFooter
         dirty={dirty}

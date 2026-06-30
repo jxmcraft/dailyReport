@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 
+import { DirectoryRecipientInput } from "@/components/directory-recipient-input";
 import { RecipientEmailsInput } from "@/components/recipient-emails-input";
 import { inputClass } from "@/components/ui/form-classes";
 
 const SMTP_HINT =
-  "Reports use SMTP from .env (SMTP_HOST, SMTP_FROM, and usually SMTP_USER / SMTP_PASS for Gmail).";
+  "Reports use SMTP from .env unless EMAIL_PROVIDER=graph (Microsoft Graph Mail.Send).";
 
 export function DeliveryFields({
   target,
@@ -25,6 +26,7 @@ export function DeliveryFields({
   approversFieldName,
   requireApprovalFieldName,
   autoSendFieldName,
+  directorySearchEnabled = false,
 }: {
   target: string;
   onTargetChange: (value: string) => void;
@@ -43,6 +45,7 @@ export function DeliveryFields({
   approversFieldName?: string;
   requireApprovalFieldName?: string;
   autoSendFieldName?: string;
+  directorySearchEnabled?: boolean;
 }) {
   const isEmail = target === "EMAIL";
 
@@ -134,12 +137,22 @@ export function DeliveryFields({
               <span className="block text-xs text-muted-foreground">
                 Receive the report first with an approve link. Any one reviewer can approve.
               </span>
-              <RecipientEmailsInput
-                emails={approvers}
-                onEmailsChange={onApproversChange}
-                name={approversFieldName}
-                placeholder="Add reviewer email…"
-              />
+              {directorySearchEnabled ? (
+                <DirectoryRecipientInput
+                  emails={approvers}
+                  onEmailsChange={onApproversChange}
+                  name={approversFieldName}
+                  placeholder="Search reviewer…"
+                  searchKind="users"
+                />
+              ) : (
+                <RecipientEmailsInput
+                  emails={approvers}
+                  onEmailsChange={onApproversChange}
+                  name={approversFieldName}
+                  placeholder="Add reviewer email…"
+                />
+              )}
             </div>
           ) : null}
 
@@ -149,12 +162,22 @@ export function DeliveryFields({
               Final recipients after approval (or immediately if approval is off). Outlook and
               M365 distribution groups work as normal SMTP addresses.
             </span>
-            <RecipientEmailsInput
-              emails={emails}
-              onEmailsChange={onEmailsChange}
-              name={recipientsFieldName}
-              placeholder="Add emailee email…"
-            />
+            {directorySearchEnabled ? (
+              <DirectoryRecipientInput
+                emails={emails}
+                onEmailsChange={onEmailsChange}
+                name={recipientsFieldName}
+                placeholder="Search emailee or group…"
+                searchKind="all"
+              />
+            ) : (
+              <RecipientEmailsInput
+                emails={emails}
+                onEmailsChange={onEmailsChange}
+                name={recipientsFieldName}
+                placeholder="Add emailee email…"
+              />
+            )}
           </div>
         </>
       ) : (
@@ -175,7 +198,11 @@ export function DeliveryFields({
 }
 
 /** Client block for the new-agent form (hidden fields sync state for server action). */
-export function NewAgentDeliveryFields() {
+export function NewAgentDeliveryFields({
+  directorySearchEnabled = false,
+}: {
+  directorySearchEnabled?: boolean;
+}) {
   const [target, setTarget] = useState("SLACK");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [emails, setEmails] = useState<string[]>([]);
@@ -204,6 +231,7 @@ export function NewAgentDeliveryFields() {
         approversFieldName="approvers"
         requireApprovalFieldName="requireEmailApproval"
         autoSendFieldName="autoSendEmail"
+        directorySearchEnabled={directorySearchEnabled}
       />
     </>
   );
