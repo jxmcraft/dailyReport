@@ -54,9 +54,16 @@ async function tick() {
     triggered.add(key);
 
     console.log(`[${now.toISOString()}] Triggering "${agent.name}" (${agent.id})`);
-    executeAgentPipeline(agent.id).catch((error) =>
-      console.error(`Pipeline failed for ${agent.id}:`, error)
-    );
+    try {
+      const result = await executeAgentPipeline(agent.id);
+      if (result.outcome !== "success") {
+        const detail =
+          result.outcome === "skipped" ? result.reason : result.message;
+        console.warn(`Pipeline ${result.outcome} for ${agent.id}:`, detail);
+      }
+    } catch (error) {
+      console.error(`Pipeline failed for ${agent.id}:`, error);
+    }
   }
 
   if (triggered.size > 5000) triggered.clear();

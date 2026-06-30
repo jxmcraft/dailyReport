@@ -25,6 +25,7 @@ export interface AgentStatusReport {
   id: string;
   timestamp: string;
   status: ReportStatus;
+  statusNotes: string[];
   rawIngestedDataCount: number;
   generatedMarkdown: string;
   sourcesUsed: SourceView[];
@@ -39,6 +40,14 @@ export interface AgentStatusResponse {
   lastReportAt: string | null;
   reportCount: number;
   latestReport: AgentStatusReport | null;
+}
+
+export async function fetchRuntimeSettings(): Promise<{
+  activeRunPollMs: number;
+} | null> {
+  const res = await fetch("/api/settings/runtime", { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json();
 }
 
 export async function fetchAgentsLive(): Promise<AgentsLiveResponse | null> {

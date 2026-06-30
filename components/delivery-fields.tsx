@@ -19,9 +19,12 @@ export function DeliveryFields({
   onApproversChange,
   requireEmailApproval,
   onRequireEmailApprovalChange,
+  autoSendEmail,
+  onAutoSendEmailChange,
   recipientsFieldName,
   approversFieldName,
   requireApprovalFieldName,
+  autoSendFieldName,
 }: {
   target: string;
   onTargetChange: (value: string) => void;
@@ -33,10 +36,13 @@ export function DeliveryFields({
   onApproversChange: (emails: string[]) => void;
   requireEmailApproval: boolean;
   onRequireEmailApprovalChange: (value: boolean) => void;
+  autoSendEmail: boolean;
+  onAutoSendEmailChange: (value: boolean) => void;
   /** When set, writes comma-separated recipients for native form submit. */
   recipientsFieldName?: string;
   approversFieldName?: string;
   requireApprovalFieldName?: string;
+  autoSendFieldName?: string;
 }) {
   const isEmail = target === "EMAIL";
 
@@ -96,6 +102,32 @@ export function DeliveryFields({
             ) : null}
           </label>
 
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              checked={autoSendEmail}
+              onChange={(e) => onAutoSendEmailChange(e.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-border"
+            />
+            <span className="space-y-1">
+              <span className="block text-sm font-medium">
+                Auto-send email after each run
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                When off, reports are saved but not emailed until you click Send
+                on a report.
+              </span>
+            </span>
+            {autoSendFieldName ? (
+              <input
+                type="hidden"
+                name={autoSendFieldName}
+                value={autoSendEmail ? "true" : "false"}
+                readOnly
+              />
+            ) : null}
+          </label>
+
           {requireEmailApproval ? (
             <div className="space-y-2">
               <span className="text-sm font-medium">Designated reviewers</span>
@@ -149,6 +181,7 @@ export function NewAgentDeliveryFields() {
   const [emails, setEmails] = useState<string[]>([]);
   const [approvers, setApprovers] = useState<string[]>([]);
   const [requireEmailApproval, setRequireEmailApproval] = useState(true);
+  const [autoSendEmail, setAutoSendEmail] = useState(true);
 
   return (
     <>
@@ -165,9 +198,12 @@ export function NewAgentDeliveryFields() {
         onApproversChange={setApprovers}
         requireEmailApproval={requireEmailApproval}
         onRequireEmailApprovalChange={setRequireEmailApproval}
+        autoSendEmail={autoSendEmail}
+        onAutoSendEmailChange={setAutoSendEmail}
         recipientsFieldName="recipients"
         approversFieldName="approvers"
         requireApprovalFieldName="requireEmailApproval"
+        autoSendFieldName="autoSendEmail"
       />
     </>
   );

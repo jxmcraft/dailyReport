@@ -31,6 +31,8 @@ export function DailyReportsList({ groups }: { groups: DailyReportGroup[] }) {
                   <ReportEntry
                     report={run.report}
                     defaultOpen={dayIndex === 0 && reportIndex === 0}
+                    showSendEmail={run.deliveryTarget === "EMAIL"}
+                    requireEmailApproval={run.requireEmailApproval}
                   />
                 </div>
               ))}

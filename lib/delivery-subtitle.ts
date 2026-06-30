@@ -24,9 +24,11 @@ export function deliverySubtitle(channel: DeliveryChannelView | undefined): stri
     ) {
       const r = channel.approverList.length;
       const reviewerPart = r === 1 ? "1 reviewer" : `${r} reviewers`;
-      return `Email · ${reviewerPart} → ${emaileePart}`;
+      const suffix = channel.autoSendEmail ? "" : " · manual send";
+      return `Email · ${reviewerPart} → ${emaileePart}${suffix}`;
     }
-    return `Email · ${emaileePart}`;
+    const suffix = channel.autoSendEmail ? "" : " · manual send";
+    return `Email · ${emaileePart}${suffix}`;
   }
   const label = channel.target === "SLACK" ? "Slack" : "Discord";
   return channel.webhookUrl

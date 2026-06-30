@@ -26,12 +26,16 @@ export function DeliverySettings({
   const [requireEmailApproval, setRequireEmailApproval] = useState(
     channel?.requireEmailApproval ?? true
   );
+  const [autoSendEmail, setAutoSendEmail] = useState(
+    channel?.autoSendEmail ?? true
+  );
   const [saved, setSaved] = useState({
     target: channel?.target ?? "SLACK",
     webhookUrl: channel?.webhookUrl ?? "",
     emails: channel?.recipientList ?? [],
     approvers: channel?.approverList ?? [],
     requireEmailApproval: channel?.requireEmailApproval ?? true,
+    autoSendEmail: channel?.autoSendEmail ?? true,
   });
 
   const dirty =
@@ -39,7 +43,8 @@ export function DeliverySettings({
     webhookUrl !== saved.webhookUrl ||
     !listsEqual(emails, saved.emails) ||
     !listsEqual(approvers, saved.approvers) ||
-    requireEmailApproval !== saved.requireEmailApproval;
+    requireEmailApproval !== saved.requireEmailApproval ||
+    autoSendEmail !== saved.autoSendEmail;
 
   const { error, pending, save } = useSettingsSave(async () => {
     await updateDeliverySettings(
@@ -48,7 +53,8 @@ export function DeliverySettings({
       webhookUrl,
       emails.join(", "),
       approvers.join(", "),
-      requireEmailApproval
+      requireEmailApproval,
+      autoSendEmail
     );
     setSaved({
       target,
@@ -56,6 +62,7 @@ export function DeliverySettings({
       emails: [...emails],
       approvers: [...approvers],
       requireEmailApproval,
+      autoSendEmail,
     });
   });
 
@@ -72,6 +79,8 @@ export function DeliverySettings({
         onApproversChange={setApprovers}
         requireEmailApproval={requireEmailApproval}
         onRequireEmailApprovalChange={setRequireEmailApproval}
+        autoSendEmail={autoSendEmail}
+        onAutoSendEmailChange={setAutoSendEmail}
       />
       <SettingsSaveFooter
         dirty={dirty}

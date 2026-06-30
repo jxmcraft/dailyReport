@@ -1,58 +1,43 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import { Loader2, Zap } from "lucide-react";
 
+import { triggerPipeline } from "@/app/agents/[id]/actions";
 import { useAgentRun } from "@/components/agent-run-context";
 import { Button } from "@/components/ui/button";
-import { AGENT_STATUS_POLL_MS } from "@/lib/constants";
-import { fetchAgentStatus } from "@/lib/client-api";
 
-export function TriggerButton({ agentId }: { agentId: string }) {
-  const router = useRouter();
-  const { isRunning } = useAgentRun();
-  const [pending, setPending] = useState(false);
+export function TriggerButton({
+  agentId,
+  disabled = false,
+}: {
+  agentId: string;
+  disabled?: boolean;
+}) {
+  const { isRunning, status, startWatching, setOptimisticStatus } = useAgentRun();
   const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
 
   const loading = pending || isRunning;
+  const isPaused = status === "PAUSED";
 
-  const waitForIdle = useCallback(async () => {
-    for (let i = 0; i < 120; i++) {
-      const data = await fetchAgentStatus(agentId);
-      if (data && data.status !== "RUNNING") {
-        router.refresh();
-        return;
-      }
-      await new Promise((r) => setTimeout(r, AGENT_STATUS_POLL_MS));
-    }
-    router.refresh();
-  }, [agentId, router]);
-
-  async function run() {
-    setPending(true);
+  function run() {
     setError(null);
-    try {
-      const res = await fetch(`/api/pipeline/${agentId}/run`, {
-        method: "POST",
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error ?? `Run failed (${res.status})`);
-        setPending(false);
-        return;
+    startWatching();
+    setOptimisticStatus("RUNNING");
+    startTransition(async () => {
+      try {
+        await triggerPipeline(agentId);
+      } catch (e) {
+        setOptimisticStatus("ACTIVE");
+        setError(e instanceof Error ? e.message : "Run failed");
       }
-      await waitForIdle();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Run failed");
-    } finally {
-      setPending(false);
-    }
+    });
   }
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <Button onClick={run} disabled={loading}>
+      <Button onClick={run} disabled={loading || disabled || isPaused}>
         {loading ? (
           <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
         ) : (

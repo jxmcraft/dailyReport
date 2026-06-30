@@ -3,9 +3,16 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
+  if (process.env.NODE_ENV === "production") {
+    console.error("seed.ts wipes all agents — refused in production.");
+    process.exit(1);
+  }
+
   // Dev seed: reset so re-running doesn't pile up duplicate agents.
   await prisma.agent.deleteMany();
 
+  // Built-in providers (News, Reddit, Hacker News, Google) run from topic keywords
+  // and .env API keys — not from DataSource rows. See lib/pipeline.ts.
   const agent = await prisma.agent.create({
     data: {
       name: "Daily Competitor Intelligence",
@@ -17,24 +24,10 @@ async function main() {
       dataSources: {
         create: [
           {
-            sourceType: "NEWS_API",
-            apiEndpoint: "https://newsapi.org/v2/everything?q=NVIDIA",
-            authSecretKeyRef: "NEWS_API_KEY",
-          },
-          {
-            // Reddit public JSON (no auth; modeled as CUSTOM_SCRAPE).
+            // Optional user webpage URL (scraped as additional source).
             sourceType: "CUSTOM_SCRAPE",
-            apiEndpoint: "https://www.reddit.com/r/hardware/new.json?limit=10",
+            apiEndpoint: "https://en.wikipedia.org/wiki/Nvidia",
             authSecretKeyRef: "NONE",
-          },
-        ],
-      },
-      deliveryChannels: {
-        create: [
-          {
-            target: "SLACK",
-            webhookUrl: "https://hooks.slack.com/services/REPLACE/ME",
-            recipientList: [],
           },
         ],
       },

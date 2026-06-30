@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
+    "postinstall": "prisma generate",
+    "test:unit": "node --import tsx --test lib/recency.test.ts lib/api-auth.test.ts lib/email-approval.test.ts",
     "scheduler": "tsx --env-file=.env scripts/scheduler.ts"
   },
   "dependencies": {

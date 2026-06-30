@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ApproveReportButton } from "@/components/approve-report-button";
+import { ApprovePageReport } from "@/components/approve-page-report";
 import { PageHeader, PageShell } from "@/components/page-shell";
-import { ReportEntry } from "@/components/report-entry";
 import { emailDeliveryStatusLabel } from "@/lib/email-approval";
 import { prisma } from "@/lib/prisma";
 import { pluralize } from "@/lib/pluralize";
@@ -68,17 +68,17 @@ export default async function ApproveReportPage({
         <p className="mb-4 text-xs text-muted-foreground">Status: {statusLabel}</p>
       ) : null}
 
-      <ReportEntry
+      <ApprovePageReport
         report={{
           id: report.id,
           timestamp: report.timestamp.toISOString(),
           status: report.status,
+          statusNotes: report.statusNotes ?? [],
           rawIngestedDataCount: report.rawIngestedDataCount,
           generatedMarkdown: report.generatedMarkdown,
           sourcesUsed: (report.sourcesUsed as { title: string; url: string; snippet: string; timestampFetched: string }[]) ?? [],
           emailDeliveryStatus: report.emailDeliveryStatus,
         }}
-        defaultOpen
         agentName={report.agent.name}
       />
 

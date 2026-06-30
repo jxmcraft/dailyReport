@@ -4,7 +4,9 @@ Reference for every script in this folder: what it does and how to run it.
 
 | Script | Purpose | Run |
 | --- | --- | --- |
-| `seed.ts` | Inserts a mock `Agent` with a `DataSource` and `DeliveryChannel` for Phase 2 UI development. | `npx ts-node scripts/seed.ts` |
-| `run-pipeline.ts` | Triggers `executeAgentPipeline()` directly for a given agent (dev/test of the backend pipeline). | `npx ts-node scripts/run-pipeline.ts <agentId>` |
-| `scheduler.ts` | Long-running worker: every 30s, runs any ACTIVE agent whose `cronSchedule` matches the current local time. Keep it running for scheduled reports to fire. | `npm run scheduler` |
+| `seed.ts` | **Destructive — dev only.** Deletes all agents, then inserts one demo agent. Refused when `NODE_ENV=production`. | `npx tsx --env-file=.env scripts/seed.ts` |
+| `run-pipeline.ts` | Triggers `executeAgentPipeline()` once for a given agent (CLI testing). | `npx tsx --env-file=.env scripts/run-pipeline.ts <agentId>` |
+| `scheduler.ts` | Long-running worker: every 30s, runs ACTIVE agents whose `cronSchedule` matches the process local time (set `TZ` in `.env`). | `npm run scheduler` |
 | `migrate.sh` | Validates `DATABASE_URL` is set, then runs `prisma migrate dev` with the given migration name. | `bash scripts/migrate.sh <migration-name>` |
+
+See [`README.md`](../README.md) for full local setup and production environment checklist.

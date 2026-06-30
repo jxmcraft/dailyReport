@@ -1,8 +1,10 @@
 import { Prisma, type AgentStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { callOpenRouterLLM } from "@/lib/openrouter";
+import { TOP_K } from "@/lib/constants";
+import { callReportLLM } from "@/lib/llm";
 import { dispatchToChannel } from "@/lib/delivery";
+import { getWorkspaceSettings } from "@/lib/workspace-settings";
 import {
   buildDefaultProviders,
   buildWebProvider,
@@ -15,14 +17,15 @@ import { rankDocuments } from "@/lib/ranking";
 import { buildOutputGuardrails } from "@/lib/report-intent";
 import {
   DEFAULT_MAX_NEWS_AGE_DAYS,
+  countStaleDocuments,
   filterRecentDocuments,
+  parsePublishedMs,
 } from "@/lib/recency";
 import type { SourceMetadata } from "@/types/agent";
 
 export type { SourceDiagnostic } from "@/lib/sources";
 
 const TOKEN_LIMIT = 128000;
-const TOP_K = 12;
 const EVIDENCE_SNIPPET_CHARS = 800;
 
 async function updateAgentStatus(agentId: string, status: AgentStatus) {
@@ -40,7 +43,7 @@ async function synthesizeReport(
   context: string
 ): Promise<string> {
   if (estimateTokens(context) <= TOKEN_LIMIT) {
-    return callOpenRouterLLM(systemPrompt, context);
+    return callReportLLM(systemPrompt, context);
   }
 
   const chunkChars = TOKEN_LIMIT * 4;
@@ -52,14 +55,14 @@ async function synthesizeReport(
   const partials: string[] = [];
   for (const chunk of chunks) {
     partials.push(
-      await callOpenRouterLLM(
+      await callReportLLM(
         "Summarize the key facts from this data chunk concisely. Preserve names, numbers, and sources.",
         chunk
       )
     );
   }
 
-  return callOpenRouterLLM(systemPrompt, partials.join("\n\n---\n\n"));
+  return callReportLLM(systemPrompt, partials.join("\n\n---\n\n"));
 }
 
 // Turn ranked documents into a clean, numbered evidence block (instead of raw
@@ -67,9 +70,11 @@ async function synthesizeReport(
 function buildEvidenceContext(docs: RankedDocument[]): string {
   return docs
     .map((d, i) => {
-      const date = d.publishedAt
-        ? new Date(d.publishedAt).toISOString().slice(0, 10)
-        : "n/a";
+      const publishedMs = parsePublishedMs(d.publishedAt);
+      const date =
+        publishedMs === null
+          ? "n/a"
+          : new Date(publishedMs).toISOString().slice(0, 10);
       return `[${i + 1}] (${d.source}, ${date}) ${d.title}\nURL: ${d.url}\n${d.text.slice(0, EVIDENCE_SNIPPET_CHARS)}`;
     })
     .join("\n\n");
@@ -93,16 +98,55 @@ function buildProviderSpecs(
   });
 }
 
-export async function executeAgentPipeline(agentId: string): Promise<void> {
+function buildStatusNotes(
+  sourceDiagnostics: SourceDiagnostic[],
+  lowConfidence: boolean,
+  deliveryFailed: boolean
+): string[] {
+  const notes: string[] = [];
+  for (const d of sourceDiagnostics) {
+    if (d.status === "error") {
+      notes.push(
+        `Source ${d.sourceType} failed: ${d.errorReason ?? "unknown error"}`
+      );
+    }
+  }
+  if (lowConfidence) {
+    notes.push(
+      "Fewer than 3 sources passed relevance filtering (weak evidence)."
+    );
+  }
+  if (deliveryFailed) {
+    notes.push(
+      "Delivery to one or more channels failed (see server logs)."
+    );
+  }
+  return notes;
+}
+
+export type PipelineOutcome =
+  | { outcome: "success" }
+  | { outcome: "no_data"; message: string }
+  | { outcome: "error"; message: string }
+  | { outcome: "skipped"; reason: "paused" | "not_found" };
+
+export async function executeAgentPipeline(
+  agentId: string
+): Promise<PipelineOutcome> {
   const agent = await prisma.agent.findUnique({
     where: { id: agentId },
     include: { dataSources: true, deliveryChannels: true },
   });
-  if (!agent || agent.status === "PAUSED") return;
+  if (!agent) return { outcome: "skipped", reason: "not_found" };
+  if (agent.status === "PAUSED") return { outcome: "skipped", reason: "paused" };
 
   await updateAgentStatus(agentId, "RUNNING");
 
+  const { sourceFetchTimeoutMs } = await getWorkspaceSettings();
+
   const sourceDiagnostics: SourceDiagnostic[] = [];
+  let rankedCount = 0;
+  let pipelinePhase: "ingestion" | "synthesis" | "delivery" = "ingestion";
 
   try {
     // Old API-type rows are superseded by built-in providers; only CUSTOM_SCRAPE
@@ -112,7 +156,9 @@ export async function executeAgentPipeline(agentId: string): Promise<void> {
     );
     const specs = buildProviderSpecs(agent.topicKeywords, webpageSources);
 
-    const results = await Promise.all(specs.map(ingestProvider));
+    const results = await Promise.all(
+      specs.map((s) => ingestProvider(s, sourceFetchTimeoutMs))
+    );
     const allDocs: RankedDocument[] = [];
     for (const r of results) {
       sourceDiagnostics.push(r.diagnostic);
@@ -120,7 +166,7 @@ export async function executeAgentPipeline(agentId: string): Promise<void> {
     }
 
     const recentDocs = filterRecentDocuments(allDocs, DEFAULT_MAX_NEWS_AGE_DAYS);
-    const droppedStale = allDocs.length - recentDocs.length;
+    const droppedStale = countStaleDocuments(allDocs, DEFAULT_MAX_NEWS_AGE_DAYS);
 
     const { ranked, lowConfidence, relevantCount } = rankDocuments(
       agent.topicKeywords,
@@ -132,27 +178,42 @@ export async function executeAgentPipeline(agentId: string): Promise<void> {
       }
     );
 
-    // Nothing relevant found: record a clear, actionable failure instead of
-    // feeding the LLM noise (which produced off-topic reports before).
-    if (ranked.length === 0) {
+    rankedCount = ranked.length;
+
+    if (ranked.length < agent.minRankedSources) {
       const okSources = sourceDiagnostics.filter((d) => d.status === "ok").length;
       const staleNote =
         droppedStale > 0
-          ? ` ${droppedStale} article(s) were older than ${DEFAULT_MAX_NEWS_AGE_DAYS} days and excluded.`
+          ? ` ${droppedStale} dated article(s) were excluded by the recency filter.`
           : "";
-      const detail = `Fetched ${allDocs.length} article(s) from ${specs.length} source(s) (${okSources} responded); ${recentDocs.length} within the last ${DEFAULT_MAX_NEWS_AGE_DAYS} days.${staleNote} None passed relevance filtering for [${agent.topicKeywords.join(", ") || "none set"}] (min score ${agent.relevanceMinScore}, ${agent.keywordMatchMode} match, ${relevantCount} passed). Lower the relevance threshold, use broader keywords, or add API keys in .env.`;
+      const detail =
+        ranked.length === 0
+          ? `Fetched ${allDocs.length} article(s) from ${specs.length} source(s) (${okSources} responded); ${recentDocs.length} eligible after recency filter.${staleNote} None passed relevance filtering for [${agent.topicKeywords.join(", ") || "none set"}] (min score ${agent.relevanceMinScore}, ${agent.keywordMatchMode} match, ${relevantCount} passed). Lower the relevance threshold, use broader keywords, or add API keys in .env.`
+          : `Found ${ranked.length} ranked source(s) after filtering; minimum required is ${agent.minRankedSources}.${staleNote} Fetched ${allDocs.length} article(s) from ${specs.length} source(s) (${okSources} responded); ${recentDocs.length} eligible after recency filter. Lower the relevance threshold, broaden keywords, add API keys in .env, or reduce minimum ranked sources in agent settings.`;
+      const abortNotes = [
+        ...buildStatusNotes(sourceDiagnostics, false, false),
+        `Run aborted: ${ranked.length} ranked source(s); minimum is ${agent.minRankedSources}.`,
+      ];
+      if (droppedStale > 0) {
+        abortNotes.push(
+          `${droppedStale} dated article(s) were excluded by the recency filter.`
+        );
+      }
       await prisma.intelligenceReport.create({
         data: {
           agentId,
-          rawIngestedDataCount: 0,
-          generatedMarkdown: `# Run aborted: no relevant data\n\n${detail}`,
+          rawIngestedDataCount: allDocs.length,
+          generatedMarkdown: `# Run aborted: insufficient sources\n\n${detail}`,
           status: "CRITICAL_ERROR",
+          statusNotes: abortNotes,
           sourcesUsed: [],
           sourceDiagnostics: sourceDiagnostics as unknown as Prisma.InputJsonValue,
         },
       });
-      return;
+      return { outcome: "no_data", message: detail };
     }
+
+    pipelinePhase = "synthesis";
 
     // Guardrails keep the model grounded in the ranked evidence rather than
     // free-associating from its training data.
@@ -190,15 +251,23 @@ export async function executeAgentPipeline(agentId: string): Promise<void> {
         rawIngestedDataCount: extractedSourceMeta.length,
         generatedMarkdown: synthesizedMarkdownReport,
         status: preliminaryPartial ? "PARTIAL_FAILURE" : "SUCCESS",
+        statusNotes: buildStatusNotes(
+          sourceDiagnostics,
+          lowConfidence,
+          false
+        ),
         sourcesUsed: extractedSourceMeta as unknown as Prisma.InputJsonValue,
         sourceDiagnostics: sourceDiagnostics as unknown as Prisma.InputJsonValue,
         emailDeliveryStatus: "NOT_APPLICABLE",
       },
     });
 
+    pipelinePhase = "delivery";
+
     // Delivery after persist so approval emails can link to reportId.
     let deliveryFailed = false;
     for (const channel of agent.deliveryChannels) {
+      if (channel.target === "EMAIL" && !channel.autoSendEmail) continue;
       try {
         await dispatchToChannel(channel, synthesizedMarkdownReport, {
           reportId: report.id,
@@ -213,27 +282,47 @@ export async function executeAgentPipeline(agentId: string): Promise<void> {
       }
     }
 
-    if (deliveryFailed && report.status === "SUCCESS") {
+    if (deliveryFailed) {
+      const notes = buildStatusNotes(
+        sourceDiagnostics,
+        lowConfidence,
+        true
+      );
       await prisma.intelligenceReport.update({
         where: { id: report.id },
-        data: { status: "PARTIAL_FAILURE" },
+        data: {
+          status: "PARTIAL_FAILURE",
+          statusNotes: notes,
+        },
       });
     }
+    return { outcome: "success" };
   } catch (error) {
+    const baseMessage =
+      error instanceof Error ? error.message : String(error);
+    const ingestedCount =
+      rankedCount > 0
+        ? rankedCount
+        : sourceDiagnostics.reduce((sum, d) => sum + d.itemsIngested, 0);
+    const message = `Failed during ${pipelinePhase}: ${baseMessage}`;
+    const errorNotes = [
+      message,
+      ...buildStatusNotes(sourceDiagnostics, false, false),
+    ];
     await prisma.intelligenceReport.create({
       data: {
         agentId,
-        rawIngestedDataCount: 0,
-        generatedMarkdown: `Pipeline compilation error: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        rawIngestedDataCount: ingestedCount,
+        generatedMarkdown: `Pipeline compilation error: ${message}`,
         status: "CRITICAL_ERROR",
+        statusNotes: errorNotes,
         sourcesUsed: [],
         sourceDiagnostics: sourceDiagnostics.length
           ? (sourceDiagnostics as unknown as Prisma.InputJsonValue)
           : Prisma.JsonNull,
       },
     });
+    return { outcome: "error", message };
   } finally {
     await updateAgentStatus(agentId, "ACTIVE");
   }

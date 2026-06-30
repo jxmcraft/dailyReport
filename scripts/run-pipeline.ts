@@ -7,8 +7,17 @@ async function main() {
     process.exit(1);
   }
 
-  await executeAgentPipeline(agentId);
-  console.log(`Pipeline run complete for agent ${agentId}`);
+  const result = await executeAgentPipeline(agentId);
+  console.log(`Pipeline run complete for agent ${agentId}:`, result.outcome);
+
+  if (result.outcome === "success") return;
+
+  if (result.outcome === "skipped") {
+    console.error(result.reason);
+  } else {
+    console.error(result.message);
+  }
+  process.exit(1);
 }
 
 main().catch((e) => {

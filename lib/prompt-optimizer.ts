@@ -1,4 +1,4 @@
-import { callOpenRouterLLM } from "@/lib/openrouter";
+import { callOptimizerLLM } from "@/lib/llm";
 
 const OPTIMIZER_SYSTEM = `You are a prompt engineer for PulseAgent, an autonomous news intelligence agent.
 Rewrite the user's system prompt so it produces actionable, evidence-grounded reports.
@@ -29,7 +29,7 @@ export async function optimizeSystemPrompt(
     trimmed,
   ].join("\n");
 
-  const optimized = await callOpenRouterLLM(OPTIMIZER_SYSTEM, userMessage);
+  const optimized = await callOptimizerLLM(OPTIMIZER_SYSTEM, userMessage);
   const cleaned = optimized.replace(/^```(?:markdown)?\n?/i, "").replace(/\n?```$/i, "").trim();
   if (!cleaned) {
     throw new Error("Optimizer returned an empty prompt.");

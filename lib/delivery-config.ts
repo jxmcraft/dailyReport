@@ -33,12 +33,14 @@ export function buildDeliveryChannelData(
   webhookUrl: string,
   recipientsRaw: string,
   approversRaw: string,
-  requireEmailApproval: boolean
+  requireEmailApproval: boolean,
+  autoSendEmail = true
 ): {
   webhookUrl: string;
   recipientList: string[];
   approverList: string[];
   requireEmailApproval: boolean;
+  autoSendEmail: boolean;
 } {
   const recipients = parseEmails(recipientsRaw);
   const approvers = parseEmails(approversRaw);
@@ -57,6 +59,7 @@ export function buildDeliveryChannelData(
       recipientList: recipients,
       approverList: approvers,
       requireEmailApproval,
+      autoSendEmail,
     };
   }
   if (!webhookUrl) {
@@ -67,6 +70,7 @@ export function buildDeliveryChannelData(
     recipientList: [],
     approverList: [],
     requireEmailApproval: true,
+    autoSendEmail: true,
   };
 }
 

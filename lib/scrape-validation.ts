@@ -1,4 +1,5 @@
 import { htmlToText, extractTitle } from "@/lib/sources";
+import { getWorkspaceSettings } from "@/lib/workspace-settings";
 
 export interface ScrapeCheckResult {
   ok: boolean;
@@ -15,12 +16,13 @@ export async function validateScrapeUrl(
     return { ok: false, message: "Enter a full URL starting with http:// or https://" };
   }
   try {
+    const { sourceFetchTimeoutMs } = await getWorkspaceSettings();
     const res = await fetch(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; PulseAgent/1.0; +https://localhost)",
         Accept: "text/html,application/xhtml+xml",
       },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(sourceFetchTimeoutMs),
     });
     if (!res.ok) {
       return { ok: false, message: `Site returned HTTP ${res.status} — it may block scraping.` };

@@ -5,10 +5,28 @@ import { RunningBanner } from "@/components/running-banner";
 import { CollapsibleSection } from "@/components/collapsible-section";
 import { CollapsibleGroup } from "@/components/page-shell";
 import { PipelineStatusIndicator } from "@/components/pipeline-status-indicator";
+import { ClearLogsButton } from "@/components/clear-logs-button";
 import { ReportEntry } from "@/components/report-entry";
 import { SourceHealthCard } from "@/components/source-health-card";
-export function AgentLiveMonitor() {
-  const { isRunning, pipelineState, reports } = useAgentRun();
+export function AgentLiveMonitor({
+  agentId,
+  agentName,
+  emailDeliveryEnabled = false,
+  requireEmailApproval = false,
+}: {
+  agentId: string;
+  agentName: string;
+  emailDeliveryEnabled?: boolean;
+  requireEmailApproval?: boolean;
+}) {
+  const {
+    isRunning,
+    pipelineState,
+    reports,
+    removeReport,
+    clearReports,
+    updateReportEmailStatus,
+  } = useAgentRun();
 
   return (
     <div className="mb-12 space-y-6">
@@ -49,6 +67,17 @@ export function AgentLiveMonitor() {
           subtitle="Expand a report to read the full output and sources"
           defaultOpen={reports.length > 0}
         >
+          {reports.length > 0 ? (
+            <div className="mb-4 flex justify-end">
+              <ClearLogsButton
+                scope="agent"
+                agentId={agentId}
+                agentName={agentName}
+                disabled={isRunning}
+                onCleared={clearReports}
+              />
+            </div>
+          ) : null}
           {reports.length === 0 ? (
             <p className="text-sm leading-relaxed text-muted-foreground">
               No reports yet. Trigger a run or wait for the scheduler.
@@ -59,7 +88,15 @@ export function AgentLiveMonitor() {
                 <ReportEntry
                   key={report.id}
                   report={report}
-                  defaultOpen={index === 0}
+                  defaultOpen={index === 0 || report.status === "CRITICAL_ERROR"}
+                  showSendEmail={emailDeliveryEnabled}
+                  requireEmailApproval={requireEmailApproval}
+                  sendEmailDisabled={isRunning}
+                  onEmailSent={(status) =>
+                    updateReportEmailStatus(report.id, status)
+                  }
+                  deleteDisabled={isRunning}
+                  onDeleted={() => removeReport(report.id)}
                 />
               ))}
             </div>

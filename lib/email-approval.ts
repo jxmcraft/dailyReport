@@ -15,7 +15,16 @@ export function requiresEmailApproval(channel: DeliveryChannel): boolean {
   );
 }
 
+export function assertEmailApprovalSecret(): void {
+  if (!envSecret("EMAIL_APPROVAL_SECRET")) {
+    throw new Error(
+      "EMAIL_APPROVAL_SECRET must be set in .env when email approval is enabled."
+    );
+  }
+}
+
 export function generateApprovalToken(): { token: string; hash: string } {
+  assertEmailApprovalSecret();
   const token = randomBytes(32).toString("hex");
   const hash = hashApprovalToken(token);
   return { token, hash };
@@ -96,6 +105,21 @@ export async function approveAndDistributeReport(
       data: { emailDeliveryStatus: "EXPIRED" },
     });
     return { ok: false, error: "This approval link has expired.", status: 410 };
+  }
+
+  if (
+    report.emailDeliveryStatus === "PENDING_REVIEW" ||
+    report.emailApprovalTokenHash
+  ) {
+    try {
+      assertEmailApprovalSecret();
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        status: 503,
+      };
+    }
   }
 
   const tokenHash = hashApprovalToken(token);

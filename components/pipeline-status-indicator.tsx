@@ -10,6 +10,11 @@ const STATE_CONFIG: Record<
     pulseAnimation: false,
     description: "Waiting for the next scheduled run.",
   },
+  IN_PROGRESS: {
+    badgeColor: "bg-blue-100 text-blue-800",
+    pulseAnimation: true,
+    description: "Fetch, synthesize, and deliver — in progress.",
+  },
   FETCHING: {
     badgeColor: "bg-amber-100 text-amber-800",
     pulseAnimation: true,
@@ -41,6 +46,7 @@ const STEPS: { key: PipelineState; label: string }[] = [
 
 const ORDER: PipelineState[] = [
   "IDLE",
+  "IN_PROGRESS",
   "FETCHING",
   "SYNTHESIZING",
   "DELIVERING",
@@ -50,6 +56,8 @@ const ORDER: PipelineState[] = [
 export function PipelineStatusIndicator({ state }: { state: PipelineState }) {
   const config = STATE_CONFIG[state];
   const currentIndex = ORDER.indexOf(state);
+  const isInProgress = state === "IN_PROGRESS";
+  const runComplete = state === "COMPLETED";
 
   return (
     <div className="space-y-6">
@@ -63,7 +71,7 @@ export function PipelineStatusIndicator({ state }: { state: PipelineState }) {
           {config.pulseAnimation ? (
             <span className="h-2 w-2 animate-pulse rounded-full bg-current" />
           ) : null}
-          {state.replace("_", " ")}
+          {state.replace(/_/g, " ")}
         </span>
         <span className="text-sm text-muted-foreground">{config.description}</span>
       </div>
@@ -71,8 +79,10 @@ export function PipelineStatusIndicator({ state }: { state: PipelineState }) {
       <div className="grid grid-cols-2 gap-4 sm:flex sm:items-center">
         {STEPS.map((step, i) => {
           const stepIndex = ORDER.indexOf(step.key);
-          const done = currentIndex > stepIndex;
-          const active = currentIndex === stepIndex;
+          const done =
+            runComplete || (!isInProgress && currentIndex > stepIndex);
+          const active =
+            !runComplete && (isInProgress || currentIndex === stepIndex);
           return (
             <div
               key={step.key}
@@ -103,7 +113,9 @@ export function PipelineStatusIndicator({ state }: { state: PipelineState }) {
                 <div
                   className={cn(
                     "mx-3 hidden h-0.5 flex-1 rounded sm:block",
-                    currentIndex > stepIndex ? "bg-primary/60" : "bg-border"
+                    currentIndex > stepIndex || isInProgress
+                      ? "bg-primary/60"
+                      : "bg-border"
                   )}
                 />
               ) : null}

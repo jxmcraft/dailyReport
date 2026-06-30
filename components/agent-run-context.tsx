@@ -12,12 +12,9 @@ import {
 import { useRouter } from "next/navigation";
 
 import type { ReportEntryData } from "@/components/report-entry";
-import {
-  AGENT_STATUS_POLL_MS,
-  PIPELINE_STAGE_TICK_MS,
-} from "@/lib/constants";
-import { fetchAgentStatus } from "@/lib/client-api";
-import type { PipelineState } from "@/lib/agents";
+import { ACTIVE_RUN_POLL_MS } from "@/lib/constants";
+import { fetchAgentStatus, fetchRuntimeSettings } from "@/lib/client-api";
+import type { EmailDeliveryStatus, PipelineState } from "@/lib/agents";
 import type { SourceDiagnostic } from "@/lib/sources";
 
 type AgentRunStatus = "ACTIVE" | "PAUSED" | "RUNNING";
@@ -31,15 +28,14 @@ interface AgentRunContextValue {
   isRunning: boolean;
   pipelineState: PipelineState;
   reports: ReportWithDiagnostics[];
+  setOptimisticStatus: (status: AgentRunStatus) => void;
+  startWatching: () => void;
+  removeReport: (reportId: string) => void;
+  clearReports: () => void;
+  updateReportEmailStatus: (reportId: string, status: EmailDeliveryStatus) => void;
 }
 
 const AgentRunContext = createContext<AgentRunContextValue | null>(null);
-
-function stageFromRunning(elapsedMs: number): PipelineState {
-  if (elapsedMs < 12_000) return "FETCHING";
-  if (elapsedMs < 45_000) return "SYNTHESIZING";
-  return "DELIVERING";
-}
 
 export function AgentRunProvider({
   agentId,
@@ -55,16 +51,26 @@ export function AgentRunProvider({
   children: ReactNode;
 }) {
   const router = useRouter();
+  const routerRef = useRef(router);
+  routerRef.current = router;
+
   const [status, setStatus] = useState(initialStatus);
   const [pipelineState, setPipelineState] = useState(initialPipelineState);
   const [reports, setReports] = useState(initialReports);
-  const runStartedAtRef = useRef<number | null>(null);
+  const [watching, setWatching] = useState(initialStatus === "RUNNING");
+  const [pollMs, setPollMs] = useState(ACTIVE_RUN_POLL_MS);
   const lastSnapshot = useRef(
     `${initialStatus}:${initialReports[0]?.id ?? ""}:${initialReports.length}`
   );
 
-  const poll = useCallback(async () => {
-    const data = await fetchAgentStatus(agentId);
+  const agentIdRef = useRef(agentId);
+  agentIdRef.current = agentId;
+
+  const sawRunningRef = useRef(initialStatus === "RUNNING");
+
+  const pollRef = useRef<() => Promise<void>>(async () => {});
+  pollRef.current = async () => {
+    const data = await fetchAgentStatus(agentIdRef.current);
     if (!data) return;
 
     const snapshot = `${data.status}:${data.latestReport?.id ?? ""}:${data.reportCount}`;
@@ -72,12 +78,12 @@ export function AgentRunProvider({
     lastSnapshot.current = snapshot;
 
     setStatus(data.status);
+    setPipelineState(data.pipelineState);
+
     if (data.status === "RUNNING") {
-      if (!runStartedAtRef.current) runStartedAtRef.current = Date.now();
-      setPipelineState(stageFromRunning(Date.now() - runStartedAtRef.current));
-    } else {
-      runStartedAtRef.current = null;
-      setPipelineState(data.pipelineState);
+      sawRunningRef.current = true;
+    } else if (sawRunningRef.current) {
+      setWatching(false);
     }
 
     if (data.latestReport) {
@@ -92,26 +98,59 @@ export function AgentRunProvider({
       });
     }
 
-    if (changed) router.refresh();
-  }, [agentId, router]);
+    if (changed) routerRef.current.refresh();
+  };
 
-  useEffect(() => {
-    poll();
-    const id = setInterval(poll, AGENT_STATUS_POLL_MS);
-    return () => clearInterval(id);
-  }, [poll]);
+  const startWatching = useCallback(() => setWatching(true), []);
 
-  useEffect(() => {
-    if (status !== "RUNNING" || !runStartedAtRef.current) return;
-    const id = setInterval(() => {
-      if (runStartedAtRef.current) {
-        setPipelineState(
-          stageFromRunning(Date.now() - runStartedAtRef.current)
-        );
-      }
-    }, PIPELINE_STAGE_TICK_MS);
-    return () => clearInterval(id);
+  const removeReport = useCallback((reportId: string) => {
+    setReports((prev) => {
+      const next = prev.filter((r) => r.id !== reportId);
+      lastSnapshot.current = `${status}:${next[0]?.id ?? ""}:${next.length}`;
+      return next;
+    });
   }, [status]);
+
+  const clearReports = useCallback(() => {
+    setReports([]);
+    lastSnapshot.current = `${status}::0`;
+  }, [status]);
+
+  const updateReportEmailStatus = useCallback(
+    (reportId: string, emailStatus: EmailDeliveryStatus) => {
+      setReports((prev) =>
+        prev.map((r) =>
+          r.id === reportId ? { ...r, emailDeliveryStatus: emailStatus } : r
+        )
+      );
+    },
+    []
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchRuntimeSettings().then((data) => {
+      if (!cancelled && data?.activeRunPollMs) {
+        setPollMs(data.activeRunPollMs);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const shouldPoll = watching || status === "RUNNING";
+
+  useEffect(() => {
+    if (!shouldPoll) return;
+
+    const tick = () => {
+      void pollRef.current();
+    };
+    tick();
+    const id = setInterval(tick, pollMs);
+    return () => clearInterval(id);
+  }, [agentId, shouldPoll, pollMs]);
 
   return (
     <AgentRunContext.Provider
@@ -120,6 +159,11 @@ export function AgentRunProvider({
         isRunning: status === "RUNNING",
         pipelineState,
         reports,
+        setOptimisticStatus: setStatus,
+        startWatching,
+        removeReport,
+        clearReports,
+        updateReportEmailStatus,
       }}
     >
       {children}

@@ -1,10 +1,10 @@
 # PulseAgent — Implementation Phases
 
-Phased build plan derived from `PRD.md` and `pulseagent_prd.pdf`.
+> **Note:** This is a historical build plan from the original PRD. For current setup, behavior, and environment variables, see [`README.md`](README.md).
+
+Phased build plan derived from `PRD.md`.
 
 Stack: Next.js 14 (App Router), TypeScript, Prisma ORM, PostgreSQL, TailwindCSS, Shadcn/ui.
-
-Build order follows the PRD's explicit instruction: dashboard grid first against mock data, then UI components, then backend pipeline hookups.
 
 ---
 
@@ -13,40 +13,39 @@ Build order follows the PRD's explicit instruction: dashboard grid first against
 Goal: Runnable Next.js 14 app with schema and types wired.
 
 - Init Next.js 14 (App Router), TypeScript, TailwindCSS, Shadcn/ui.
-- Add Prisma; write `schema.prisma` from PRD section 2 (4 models: `Agent`, `DataSource`, `DeliveryChannel`, `IntelligenceReport`; 3 enums plus `ExecutionStatus`).
-- Create `/types/agent.ts` with `SourceMetadata`, `IngestionPayload`, `LLMProcessingContext` interfaces.
+- Add Prisma; schema includes `Agent`, `DataSource`, `DeliveryChannel`, `IntelligenceReport`, `WorkspaceSettings`.
+- Create `/types/agent.ts` with pipeline context interfaces.
 - Add `.env.example` with `DATABASE_URL` and LLM key placeholders.
 
-Verify: `prisma migrate dev` succeeds and the app boots.
+Verify: `npx prisma db push` succeeds and the app boots.
 
 ---
 
 ## Phase 2 — UI Shell & Dashboard
 
-Goal: Full dashboard UI against mock data, no backend calls.
+Goal: Full dashboard UI wired to live data.
 
-- Left sidebar: Agents Dashboard, Global API Integrations, Activity Logs, System Settings.
+- Sidebar: Agents Dashboard, Integrations (read-only env status), Activity Logs, Settings.
 - Agent card grid: name, topic keywords, frequency, status badge, last-run date.
-- `PipelineStatusIndicator` component with the IDLE / FETCHING / SYNTHESIZING / DELIVERING / COMPLETED states from PRD section 3.1 (badge colors and pulse animation per spec).
-- Human-friendly cron configurator (Daily/Weekly/Hourly dropdown + timezone-adjusted clock selector) instead of raw cron input.
-- Live markdown preview pane for editing the system prompt.
-- Citation Transparency Accordion ("Sources Audited") on the report detail view.
-- Color palette: white canvas `#ffffff`, slate borders `#e2e8f0`, indigo `#2563eb` accents, semantic badges (success `#10b981`, processing `#3b82f6` pulse, failed `#ef4444`).
+- `PipelineStatusIndicator` with IDLE / IN_PROGRESS / COMPLETED states.
+- Human-friendly cron configurator (Daily/Weekly/Hourly + time picker).
+- Live markdown preview for system prompt editing.
+- Sources accordion and source health on reports.
 
-Verify: all UI states render correctly with mock `AgentConfiguration` data.
+Verify: dashboard and agent detail render with real DB data.
 
 ---
 
 ## Phase 3 — Backend Pipeline
 
-Goal: Real pipeline executes end-to-end via an API route.
+Goal: Real pipeline executes end-to-end.
 
-- `POST /api/pipeline/[agentId]/run` route triggers `executeAgentPipeline()`.
-- Ingestion worker: fetch each `DataSource`, truncate stringified payload at 24,000 chars, build `compiledContextStrings` and `extractedSourceMeta`.
-- LLM layer (`lib/openrouter.ts`): call OpenRouter (OpenAI-compatible) with the free Poolside model `poolside/laguna-m.1:free` using `systemPrompt` plus context; log null payloads cleanly without panicking; chunk (map-reduce) if cumulative tokens exceed 128,000.
-- Delivery router: dispatch to Slack webhook / Discord embed / SendGrid email.
-- Write an `IntelligenceReport` record on both success and error paths; reset agent status to `ACTIVE` in `finally`.
-- Enforce a 180,000 ms timeout on all external fetch clients.
+- `POST /api/pipeline/[agentId]/run` and UI trigger call `executeAgentPipeline()`.
+- Built-in providers (News, Reddit, Hacker News, Google) from topic keywords + `.env` keys; optional `CUSTOM_SCRAPE` webpage URLs per agent.
+- LLM layer (`lib/llm.ts`): OpenRouter or DeepSeek via env; map-reduce when context exceeds token limit.
+- Delivery: Slack webhook, Discord embed, SMTP email (nodemailer — not SendGrid).
+- `IntelligenceReport` on success, partial failure, and error paths; agent reset to `ACTIVE` in `finally`.
+- Timeouts: workspace settings (Settings page) for LLM and source fetch.
 
 Verify: `scripts/run-pipeline.ts` triggers a full run and a report appears in the DB.
 
@@ -54,11 +53,11 @@ Verify: `scripts/run-pipeline.ts` triggers a full run and a report appears in th
 
 ## Phase 4 — Integration & Hardening
 
-Goal: UI reads live data, secrets are handled securely, system is production-ready.
+Goal: UI reflects live runs; secrets stay in `.env`.
 
-- Wire dashboard cards and activity logs to the real DB via server components / API routes.
-- Secure API key setup UI: maps user input to `.env` (never stored in DB plain-text).
-- Scheduler retry logic: 3 attempts with exponential backoff on ingestion failure; show "Partial Ingestion" badge in UI.
-- Delivery failure path: save output to `IntelligenceReport` with `PARTIAL_FAILURE` status and flag the run in the dashboard.
+- Dashboard and activity logs poll lightweight status APIs during runs.
+- Integrations page: read-only display of which env keys are set (no DB storage of secrets).
+- Partial failure and critical error reports with `statusNotes` and source diagnostics in the UI.
+- Email approval flow with `EMAIL_APPROVAL_SECRET` and `APP_URL`.
 
-Verify: a full pipeline run is reflected in the UI without a page refresh; error states display correctly.
+Verify: pipeline run visible without manual refresh; error states show diagnostics, not misleading zero counts.

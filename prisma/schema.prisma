@@ -39,6 +39,14 @@ enum EmailDeliveryStatus {
   EXPIRED
 }
 
+model WorkspaceSettings {
+  id                   Int      @id @default(1)
+  llmTimeoutMs         Int      @default(180000)
+  sourceFetchTimeoutMs Int      @default(60000)
+  activeRunPollMs      Int      @default(4000)
+  updatedAt            DateTime @updatedAt
+}
+
 model Agent {
   id               String               @id @default(uuid())
   name             String
@@ -46,6 +54,7 @@ model Agent {
   cronSchedule     String
   systemPrompt       String               @db.Text
   relevanceMinScore  Int                  @default(3)
+  minRankedSources   Int                  @default(3)
   keywordMatchMode   String               @default("OR")
   status             AgentStatus          @default(ACTIVE)
   createdAt        DateTime             @default(now())
@@ -73,6 +82,7 @@ model DeliveryChannel {
   recipientList        String[]
   approverList         String[]       @default([])
   requireEmailApproval Boolean        @default(true)
+  autoSendEmail        Boolean        @default(true)
 }
 
 model IntelligenceReport {
@@ -83,6 +93,7 @@ model IntelligenceReport {
   rawIngestedDataCount   Int
   generatedMarkdown      String               @db.Text
   status                 ExecutionStatus
+  statusNotes            String[]             @default([])
   sourcesUsed            Json
   sourceDiagnostics      Json?
   emailDeliveryStatus    EmailDeliveryStatus  @default(NOT_APPLICABLE)

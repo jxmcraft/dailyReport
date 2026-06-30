@@ -2,6 +2,7 @@
 // the ranking layer and the LLM see one consistent shape regardless of origin.
 
 import { envSecret } from "@/lib/env";
+import { SOURCE_FETCH_TIMEOUT_MS } from "@/lib/constants";
 import { buildNewsSearchQuery } from "@/lib/ranking";
 import {
   DEFAULT_MAX_NEWS_AGE_DAYS,
@@ -50,7 +51,6 @@ export interface ProviderSpec {
   endpoint: string;
 }
 
-const FETCH_TIMEOUT_MS = 30000;
 const MAX_ITEMS_PER_SOURCE = 15;
 const WEB_TEXT_LIMIT = 5000;
 
@@ -94,7 +94,7 @@ function extractTickerSymbols(keywords: string[]): string {
     .join(",");
 }
 
-// Retry transient failures (network errors, 429, 5xx). 4xx are returned as-is.
+// Retry transient failures (429, 5xx, network). Return 4xx immediately (no retry).
 async function fetchWithRetry(
   url: string,
   init: RequestInit,
@@ -576,7 +576,10 @@ function parsePayload(spec: ProviderSpec, data: unknown): RankedDocument[] {
   return [];
 }
 
-export async function ingestProvider(spec: ProviderSpec): Promise<{
+export async function ingestProvider(
+  spec: ProviderSpec,
+  fetchTimeoutMs: number = SOURCE_FETCH_TIMEOUT_MS
+): Promise<{
   docs: RankedDocument[];
   diagnostic: SourceDiagnostic;
 }> {
@@ -601,7 +604,7 @@ export async function ingestProvider(spec: ProviderSpec): Promise<{
     const { url, headers, expectHtml } = buildRequest(spec);
     const response = await fetchWithRetry(url, {
       headers,
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      signal: AbortSignal.timeout(fetchTimeoutMs),
     });
 
     const httpStatus = response.status;

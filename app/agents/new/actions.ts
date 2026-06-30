@@ -47,6 +47,7 @@ export async function createAgent(formData: FormData) {
   const recipientsRaw = get("recipients");
   const approversRaw = get("approvers");
   const requireEmailApproval = get("requireEmailApproval") !== "false";
+  const autoSendEmail = get("autoSendEmail") !== "false";
   const systemPrompt =
     get("systemPrompt") ||
     `Summarize the latest updates about ${topicKeywords.join(", ") || name} in Markdown with sections and bullet points.`;
@@ -61,6 +62,7 @@ export async function createAgent(formData: FormData) {
       ),
       systemPrompt,
       relevanceMinScore: 3,
+      minRankedSources: 3,
       keywordMatchMode: "OR",
       status: "ACTIVE",
       dataSources: {
@@ -86,7 +88,8 @@ export async function createAgent(formData: FormData) {
                   webhookUrl,
                   recipientsRaw,
                   approversRaw,
-                  requireEmailApproval
+                  requireEmailApproval,
+                  autoSendEmail
                 ),
               },
             ],

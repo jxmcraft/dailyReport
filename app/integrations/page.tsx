@@ -12,6 +12,7 @@ export default async function IntegrationsPage() {
 
   const refs = new Set<string>([
     "OPENROUTER_API_KEY",
+    "DEEPSEEK_API_KEY",
     "NEWS_API_KEY",
     "GNEWS_API_KEY",
     "CURRENTS_API_KEY",
@@ -21,6 +22,8 @@ export default async function IntegrationsPage() {
     "GOOGLE_SEARCH_API_KEY",
     "GOOGLE_SEARCH_CX",
     "REDDIT_USER",
+    "EMAIL_APPROVAL_SECRET",
+    "API_SECRET",
   ]);
   for (const agent of agents) {
     for (const source of agent.dataSources) {

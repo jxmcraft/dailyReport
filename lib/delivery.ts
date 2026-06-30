@@ -1,6 +1,6 @@
 import type { DeliveryChannel } from "@prisma/client";
 
-import { EXECUTION_TIMEOUT_MS } from "@/lib/constants";
+import { LLM_TIMEOUT_MS } from "@/lib/constants";
 import {
   generateApprovalToken,
   requiresEmailApproval,
@@ -16,7 +16,7 @@ async function postJson(url: string, body: unknown, headers: Record<string, stri
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(EXECUTION_TIMEOUT_MS),
+    signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
   });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
