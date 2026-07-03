@@ -1,10 +1,10 @@
 @description('Azure region for all resources')
 param location string
 
-@description('Short name prefix, e.g. pulseagent')
+@description('Short name prefix, e.g. newsagent')
 param environmentName string
 
-@description('Container image including tag, e.g. myacr.azurecr.io/pulseagent:1.0.0')
+@description('Container image including tag, e.g. myacr.azurecr.io/newsagent:1.0.0')
 param containerImage string
 
 @description('Public base URL for the web app (no trailing slash)')
@@ -17,9 +17,9 @@ param tz string = 'UTC'
 @description('PostgreSQL administrator password')
 param postgresAdminPassword string
 
-param postgresAdminLogin string = 'pulseadmin'
+param postgresAdminLogin string = 'newsadmin'
 param postgresSku string = 'B_Standard_B1ms'
-param postgresDbName string = 'pulseagent'
+param postgresDbName string = 'newsagent'
 
 var namePrefix = environmentName
 var postgresServerName = '${namePrefix}-pg-${uniqueString(resourceGroup().id)}'

@@ -1,4 +1,4 @@
-# PulseAgent Bug Fixes
+# NewsAgent Bug Fixes
 
 Phased bug-fix tracker. Tell an agent which phase to implement; check boxes when done.
 

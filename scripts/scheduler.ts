@@ -103,7 +103,7 @@ async function main() {
   if (recovered > 0) {
     console.warn(`Recovered ${recovered} stale RUNNING agent(s) on startup.`);
   }
-  console.log("PulseAgent scheduler running. Checking schedules every 30s. Ctrl+C to stop.");
+  console.log("NewsAgent scheduler running. Checking schedules every 30s. Ctrl+C to stop.");
   await tick();
   setInterval(() => {
     tick().catch((error) => console.error("Scheduler tick failed:", error));

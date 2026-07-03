@@ -14,10 +14,10 @@ Use Graph when `EMAIL_PROVIDER=graph` instead of SMTP. Application permissions (
 
 ## Service mailbox
 
-Create or choose a mailbox (e.g. `pulseagent@yourcompany.com`) and set:
+Create or choose a mailbox (e.g. `newsagent@yourcompany.com`) and set:
 
 ```env
-GRAPH_SENDER_UPN=pulseagent@yourcompany.com
+GRAPH_SENDER_UPN=newsagent@yourcompany.com
 EMAIL_PROVIDER=graph
 ```
 
@@ -42,4 +42,4 @@ Approval URLs use `APP_URL` (see `lib/app-url.ts`). In production, `APP_URL` mus
 
 ## Fallback
 
-If Graph is not configured, PulseAgent uses SMTP (`SMTP_*` in `.env`) and manual email entry.
+If Graph is not configured, NewsAgent uses SMTP (`SMTP_*` in `.env`) and manual email entry.

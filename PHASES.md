@@ -1,4 +1,4 @@
-# PulseAgent — Implementation Phases
+# NewsAgent — Implementation Phases
 
 > **Note:** This is a historical build plan from the original PRD. For current setup, behavior, and environment variables, see [`README.md`](README.md).
 

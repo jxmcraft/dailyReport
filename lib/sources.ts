@@ -266,7 +266,7 @@ function buildRequest(spec: ProviderSpec): {
     return {
       url: normalizeRedditJsonUrl(spec.endpoint),
       headers: {
-        "User-Agent": `web:pulseagent:1.0 (by /u/${redditUser})`,
+        "User-Agent": `web:newsagent:1.0 (by /u/${redditUser})`,
         Accept: "application/json",
       },
       expectHtml: false,
@@ -332,7 +332,7 @@ function buildRequest(spec: ProviderSpec): {
         url: spec.endpoint,
         headers: {
           "User-Agent":
-            "Mozilla/5.0 (compatible; PulseAgent/1.0; +https://localhost)",
+            "Mozilla/5.0 (compatible; NewsAgent/1.0; +https://localhost)",
           Accept: "text/html,application/xhtml+xml",
         },
         expectHtml: true,

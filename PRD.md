@@ -245,7 +245,7 @@ When constructing the core generation functions for Cursor to implement LLM call
 Fallback Mitigation: If any payload is null, do not panic out of the code loop; log partial exception states cleanly.
 Context Compression: Instruct Cursor to build a map-reduce style tokenizer wrapper if cumulative tokens exceed 128,000 tokens across multiple scrapers.
 Execution Guard: Set maximum timeout explicitly inside API fetch clients to exactly 180000ms. """
-with open("pulseagent_prd_machine_readable.md", "w") as f: f.write(markdown_content)
+with open("newsagent_prd_machine_readable.md", "w") as f: f.write(markdown_content)
 print("Markdown generated successfully.")
 Your machine-readable, copy-and-pastable PRD Markdown file is ready for direct use in Cursor IDE.
 
@@ -257,7 +257,7 @@ You can copy and paste the raw text block below directly into a file named `PRD.
 
 
 ```markdown
-# MACHINE-READABLE PRD: PULSEAGENT
+# MACHINE-READABLE PRD: NEWSAGENT
 ================================================================================
 Target Consumption Engine: Cursor IDE / LLM Context
 File Context: System Architecture, Database Schema, API Contracts, UI State Machine
@@ -266,7 +266,7 @@ File Context: System Architecture, Database Schema, API Contracts, UI State Mach
 
 ```json
 {
-  "project": "PulseAgent",
+  "project": "NewsAgent",
   "version": "1.0.0",
   "environment": "Next.js 14 (App Router), TypeScript, Prisma ORM, TailwindCSS, Shadcn/ui",
   "purpose": "Autonomous 24/7 background data ingestion, LLM compilation, and multi-channel notification engine."

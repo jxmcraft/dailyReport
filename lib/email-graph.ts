@@ -46,7 +46,7 @@ export async function sendEmaileeViaGraph(opts: {
   const html = markdownToEmailHtml(opts.markdown);
   await sendMailViaGraph({
     to: opts.to,
-    subject: `PulseAgent Intelligence Report: ${opts.agentName}`,
+    subject: `NewsAgent Intelligence Report: ${opts.agentName}`,
     text: opts.markdown,
     html,
   });

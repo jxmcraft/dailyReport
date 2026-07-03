@@ -1,6 +1,6 @@
-# PulseAgent — Azure infrastructure (Bicep)
+# NewsAgent — Azure infrastructure (Bicep)
 
-Provisions PostgreSQL, ACR, Key Vault, Container Apps Environment, **pulseagent-web**, and **pulseagent-scheduler**.
+Provisions PostgreSQL, ACR, Key Vault, Container Apps Environment, **newsagent-web**, and **newsagent-scheduler**.
 
 ## Prerequisites
 
@@ -19,10 +19,10 @@ az bicep build --file infra/azure/main.bicep
 
 ```bash
 az login
-az group create --name rg-pulseagent --location eastus
+az group create --name rg-newsagent --location eastus
 
 az deployment group create \
-  --resource-group rg-pulseagent \
+  --resource-group rg-newsagent \
   --template-file infra/azure/main.bicep \
   --parameters infra/azure/main.bicepparam \
   --parameters postgresAdminPassword='YOUR_STRONG_PASSWORD' \
@@ -33,7 +33,7 @@ az deployment group create \
 Note outputs:
 
 ```bash
-az deployment group show -g rg-pulseagent -n main --query properties.outputs
+az deployment group show -g rg-newsagent -n main --query properties.outputs
 ```
 
 Save `acrName`, `postgresFqdn`, `keyVaultName`, `webAppName`, `schedulerAppName`.
@@ -41,8 +41,8 @@ Save `acrName`, `postgresFqdn`, `keyVaultName`, `webAppName`, `schedulerAppName`
 **First deploy:** Container Apps may fail to pull secrets until managed-identity role assignments propagate (1–3 minutes). If revisions are unhealthy, wait and run:
 
 ```bash
-az containerapp revision restart -n pulseagent-web -g rg-pulseagent
-az containerapp revision restart -n pulseagent-scheduler -g rg-pulseagent
+az containerapp revision restart -n newsagent-web -g rg-newsagent
+az containerapp revision restart -n newsagent-scheduler -g rg-newsagent
 ```
 
 ## 3. Add secrets to Key Vault
@@ -68,8 +68,8 @@ ACR_NAME=<from deployment output>
 TAG=$(git rev-parse --short HEAD)
 
 az acr login --name "$ACR_NAME"
-docker build -t "$ACR_NAME.azurecr.io/pulseagent:$TAG" .
-docker push "$ACR_NAME.azurecr.io/pulseagent:$TAG"
+docker build -t "$ACR_NAME.azurecr.io/newsagent:$TAG" .
+docker push "$ACR_NAME.azurecr.io/newsagent:$TAG"
 ```
 
 ## 5. Apply database migrations
@@ -77,7 +77,7 @@ docker push "$ACR_NAME.azurecr.io/pulseagent:$TAG"
 From a machine that can reach Postgres (add your IP to the server firewall temporarily):
 
 ```bash
-DATABASE_URL="postgresql://pulseadmin:PASSWORD@<postgresFqdn>:5432/pulseagent?sslmode=require" \
+DATABASE_URL="postgresql://newsadmin:PASSWORD@<postgresFqdn>:5432/newsagent?sslmode=require" \
   npx prisma migrate deploy
 ```
 
@@ -92,17 +92,17 @@ Run **before** pointing production traffic at a new revision.
 ## 6. Deploy application revision
 
 ```bash
-IMAGE="$ACR_NAME.azurecr.io/pulseagent:$TAG"
+IMAGE="$ACR_NAME.azurecr.io/newsagent:$TAG"
 
-az containerapp update -n pulseagent-web -g rg-pulseagent --image "$IMAGE"
-az containerapp update -n pulseagent-scheduler -g rg-pulseagent --image "$IMAGE"
+az containerapp update -n newsagent-web -g rg-newsagent --image "$IMAGE"
+az containerapp update -n newsagent-scheduler -g rg-newsagent --image "$IMAGE"
 ```
 
 Set `APP_URL` to the web app FQDN (no trailing slash):
 
 ```bash
-FQDN=$(az containerapp show -n pulseagent-web -g rg-pulseagent --query properties.configuration.ingress.fqdn -o tsv)
-az containerapp update -n pulseagent-web -g rg-pulseagent \
+FQDN=$(az containerapp show -n newsagent-web -g rg-newsagent --query properties.configuration.ingress.fqdn -o tsv)
+az containerapp update -n newsagent-web -g rg-newsagent \
   --set-env-vars "APP_URL=https://$FQDN"
 ```
 
@@ -110,7 +110,7 @@ az containerapp update -n pulseagent-web -g rg-pulseagent \
 
 ```bash
 curl -sf "https://$FQDN/api/health"
-az containerapp logs show -n pulseagent-scheduler -g rg-pulseagent --tail 30
+az containerapp logs show -n newsagent-scheduler -g rg-newsagent --tail 30
 ```
 
 ## Secret / env mapping reference
@@ -129,7 +129,7 @@ az containerapp logs show -n pulseagent-scheduler -g rg-pulseagent --tail 30
 ```bash
 MY_IP=$(curl -s https://api.ipify.org)
 az postgres flexible-server firewall-rule create \
-  -g rg-pulseagent -n <postgresServerName> \
+  -g rg-newsagent -n <postgresServerName> \
   -r allow-local-migrate --start-ip-address "$MY_IP" --end-ip-address "$MY_IP"
 ```
 

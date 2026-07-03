@@ -16,7 +16,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "PulseAgent",
+  title: "NewsAgent",
   description: "Autonomous real-time intelligence & reporting platform.",
 };
 

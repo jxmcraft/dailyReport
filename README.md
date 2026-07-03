@@ -1,6 +1,6 @@
-# PulseAgent
+# NewsAgent
 
-PulseAgent is a Next.js dashboard for scheduled intelligence agents. Each agent fetches news and web sources by topic keywords, ranks and filters articles, synthesizes a Markdown report via an LLM (OpenRouter or DeepSeek), and delivers to Slack, Email, or Discord.
+NewsAgent is a Next.js dashboard for scheduled intelligence agents. Each agent fetches news and web sources by topic keywords, ranks and filters articles, synthesizes a Markdown report via an LLM (OpenRouter or DeepSeek), and delivers to Slack, Email, or Discord.
 
 ## Local development
 

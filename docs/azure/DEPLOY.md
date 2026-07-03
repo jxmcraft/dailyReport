@@ -1,6 +1,6 @@
-# Deploy PulseAgent on Azure
+# Deploy NewsAgent on Azure
 
-PulseAgent needs **two long-running processes** plus **PostgreSQL**:
+NewsAgent needs **two long-running processes** plus **PostgreSQL**:
 
 | Process | Command | Notes |
 | --- | --- | --- |
@@ -18,8 +18,8 @@ Resources created:
 2. **Azure Container Registry**
 3. **Log Analytics** + **Container Apps Environment**
 4. **Key Vault** (`DATABASE-URL` seeded at deploy)
-5. **Container App `pulseagent-web`** — external ingress, liveness/readiness on `/api/health`
-6. **Container App `pulseagent-scheduler`** — no ingress; command `npm run scheduler`; liveness on `/health:3001`
+5. **Container App `newsagent-web`** — external ingress, liveness/readiness on `/api/health`
+6. **Container App `newsagent-scheduler`** — no ingress; command `npm run scheduler`; liveness on `/health:3001`
 
 Validate templates locally:
 
@@ -34,9 +34,9 @@ Run in order for each production release:
 ### 1. Provision or update infrastructure
 
 ```bash
-az group create -n rg-pulseagent -l eastus
+az group create -n rg-newsagent -l eastus
 az deployment group create \
-  -g rg-pulseagent \
+  -g rg-newsagent \
   -f infra/azure/main.bicep \
   -p infra/azure/main.bicepparam \
   -p postgresAdminPassword='...'
@@ -46,8 +46,8 @@ az deployment group create \
 
 ```bash
 az acr login -n <acrName>
-docker build -t <acrName>.azurecr.io/pulseagent:<tag> .
-docker push <acrName>.azurecr.io/pulseagent:<tag>
+docker build -t <acrName>.azurecr.io/newsagent:<tag> .
+docker push <acrName>.azurecr.io/newsagent:<tag>
 ```
 
 ### 3. Apply database migrations (once per schema change)
@@ -55,7 +55,7 @@ docker push <acrName>.azurecr.io/pulseagent:<tag>
 Run **before** updating Container App revisions (not in the web container `CMD`):
 
 ```bash
-DATABASE_URL='postgresql://...@<server>.postgres.database.azure.com:5432/pulseagent?sslmode=require' \
+DATABASE_URL='postgresql://...@<server>.postgres.database.azure.com:5432/newsagent?sslmode=require' \
   npm run db:migrate:deploy
 ```
 
@@ -70,8 +70,8 @@ DATABASE_URL='postgresql://...@<server>.postgres.database.azure.com:5432/pulseag
 ### 4. Update Container Apps
 
 ```bash
-az containerapp update -n pulseagent-web -g rg-pulseagent --image <acrName>.azurecr.io/pulseagent:<tag>
-az containerapp update -n pulseagent-scheduler -g rg-pulseagent --image <acrName>.azurecr.io/pulseagent:<tag>
+az containerapp update -n newsagent-web -g rg-newsagent --image <acrName>.azurecr.io/newsagent:<tag>
+az containerapp update -n newsagent-scheduler -g rg-newsagent --image <acrName>.azurecr.io/newsagent:<tag>
 ```
 
 Set `APP_URL` to the public HTTPS URL (no trailing slash) before sending approval emails.
@@ -80,13 +80,13 @@ Set `APP_URL` to the public HTTPS URL (no trailing slash) before sending approva
 
 ```bash
 curl -sf https://<web-fqdn>/api/health
-az containerapp logs show -n pulseagent-scheduler -g rg-pulseagent --tail 20
+az containerapp logs show -n newsagent-scheduler -g rg-newsagent --tail 20
 ```
 
 ## Docker image
 
 ```bash
-docker build -t pulseagent:latest .
+docker build -t newsagent:latest .
 ```
 
 - **Web** container command: default (`npm run start`)

@@ -80,7 +80,7 @@ async function chatCompletion(opts: {
       Authorization: `Bearer ${opts.apiKey}`,
       "Content-Type": "application/json",
       "HTTP-Referer": "https://localhost:3000",
-      "X-Title": "PulseAgent Dashboard",
+      "X-Title": "NewsAgent Dashboard",
     },
     body: JSON.stringify({
       model: opts.model,

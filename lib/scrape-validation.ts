@@ -19,7 +19,7 @@ export async function validateScrapeUrl(
     const { sourceFetchTimeoutMs } = await getWorkspaceSettings();
     const res = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; PulseAgent/1.0; +https://localhost)",
+        "User-Agent": "Mozilla/5.0 (compatible; NewsAgent/1.0; +https://localhost)",
         Accept: "text/html,application/xhtml+xml",
       },
       signal: AbortSignal.timeout(sourceFetchTimeoutMs),

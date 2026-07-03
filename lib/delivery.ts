@@ -73,7 +73,7 @@ export async function dispatchToChannel(
       await sendEmaileeEmail({
         to: channel.recipientList,
         markdown,
-        agentName: ctx?.agentName ?? "PulseAgent",
+        agentName: ctx?.agentName ?? "NewsAgent",
       });
       if (ctx?.reportId) {
         await prisma.intelligenceReport.update({

@@ -41,7 +41,7 @@ export function Sidebar() {
         </span>
         <div>
           <span className="block text-base font-semibold leading-none">
-            PulseAgent
+            NewsAgent
           </span>
           <span className="mt-1 block text-[11px] text-muted-foreground">
             Intelligence platform
