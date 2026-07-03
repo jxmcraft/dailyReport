@@ -9,6 +9,7 @@ import {
   parseDeliveryTarget,
 } from "@/lib/delivery-config";
 import { dispatchToChannel } from "@/lib/delivery";
+import { recoverStaleRunningAgents } from "@/lib/agent-recovery";
 import { executeAgentPipeline } from "@/lib/pipeline";
 import { prisma } from "@/lib/prisma";
 import { optimizeSystemPrompt } from "@/lib/prompt-optimizer";
@@ -301,6 +302,7 @@ export async function setAgentPaused(agentId: string, paused: boolean) {
 }
 
 export async function triggerPipeline(agentId: string) {
+  await recoverStaleRunningAgents();
   const agent = await requireAgent(agentId);
   if (agent.status === "PAUSED") {
     throw new Error("Cannot trigger a paused agent. Resume it first.");

@@ -1,7 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-
 import { ReportEntry, type ReportEntryData } from "@/components/report-entry";
 
 export function ApprovePageReport({
@@ -11,8 +9,6 @@ export function ApprovePageReport({
   report: ReportEntryData;
   agentName: string;
 }) {
-  const router = useRouter();
-
   return (
     <ReportEntry
       report={report}
@@ -21,7 +17,6 @@ export function ApprovePageReport({
       showDelete={false}
       showSendEmail={false}
       requireEmailApproval
-      onDeleted={() => router.push("/logs")}
     />
   );
 }

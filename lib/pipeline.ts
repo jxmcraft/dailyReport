@@ -81,8 +81,8 @@ function buildEvidenceContext(docs: RankedDocument[]): string {
     .join("\n\n");
 }
 
-// Built-in keyword providers (News, Reddit, Hacker News, Google) always run.
-// Any webpage URLs the user added are scraped as additional sources.
+// Built-in keyword providers run when topic keywords are set; webpage URLs are
+// always added as scrape sources.
 function buildProviderSpecs(
   keywords: string[],
   webpageSources: { id: string; apiEndpoint: string }[]

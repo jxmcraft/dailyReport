@@ -8,6 +8,7 @@ import {
   resolveApprovalPageAccess,
   type ApprovalPageReport,
 } from "./email-approval";
+import { EMAIL_APPROVAL_TTL_MS } from "./constants";
 
 const ENV_KEY = "EMAIL_APPROVAL_SECRET";
 
@@ -108,4 +109,31 @@ test("resolveApprovalPageAccess allows distributed without token check", () => {
     "any"
   );
   assert.equal(access.kind, "ok_distributed");
+});
+
+test("resolveApprovalPageAccess returns expired for EXPIRED status", () => {
+  const access = resolveApprovalPageAccess(
+    sampleReport({ emailDeliveryStatus: "EXPIRED" }),
+    "any-token"
+  );
+  assert.equal(access.kind, "expired");
+});
+
+test("resolveApprovalPageAccess returns expired when TTL elapsed", () => {
+  const access = resolveApprovalPageAccess(
+    sampleReport({
+      emailDeliveryStatus: "PENDING_REVIEW",
+      timestamp: new Date(Date.now() - EMAIL_APPROVAL_TTL_MS - 1_000),
+    }),
+    "any-token"
+  );
+  assert.equal(access.kind, "expired");
+});
+
+test("resolveApprovalPageAccess returns not_awaiting_approval for NOT_APPLICABLE", () => {
+  const access = resolveApprovalPageAccess(
+    sampleReport({ emailDeliveryStatus: "NOT_APPLICABLE" }),
+    "any-token"
+  );
+  assert.equal(access.kind, "not_awaiting_approval");
 });

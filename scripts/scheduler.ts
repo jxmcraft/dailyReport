@@ -68,6 +68,8 @@ async function tick() {
   lastTickAt = now.toISOString();
   const minuteKey = buildMinuteKey(now);
 
+  await recoverStaleRunningAgents();
+
   // Only ACTIVE agents are eligible; one mid-run sets itself to RUNNING and is
   // skipped until it returns to ACTIVE, which prevents overlapping runs.
   const agents = await prisma.agent.findMany({ where: { status: "ACTIVE" } });

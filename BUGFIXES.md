@@ -149,6 +149,21 @@ Phased bug-fix tracker. Tell an agent which phase to implement; check boxes when
 
 ---
 
+## Phase 5 — Post-review polish
+
+### P5-1: Manual trigger could not recover stale RUNNING agent
+
+- **Severity:** Medium
+- **Symptom:** Agent stuck `RUNNING` after crash could not be triggered manually; “already in progress” forever until scheduler restart or another agent’s run.
+- **Root cause:** [`app/agents/[id]/actions.ts`](app/agents/[id]/actions.ts) checked `RUNNING` before calling `executeAgentPipeline`, where `recoverStaleRunningAgents()` lived.
+- **Fix:** Call `recoverStaleRunningAgents()` at start of `triggerPipeline`; also at start of each scheduler `tick()`.
+- **Verify:**
+  - [ ] Agent `RUNNING` with `updatedAt` older than `STALE_RUNNING_MS` → manual trigger succeeds.
+  - [ ] Agent `RUNNING` with recent `updatedAt` → manual trigger still blocked.
+- **Status:** [x] Fixed
+
+---
+
 ## Appendix — Documentation drift (not runtime bugs)
 
 - **D5-1:** README.md still create-next-app boilerplate — [x] Fixed (see README.md)

@@ -148,7 +148,6 @@ export function rankDocuments(
   });
 
   const cleanKeywords = keywords.map((k) => k.trim()).filter(Boolean);
-  const now = Date.now();
 
   if (cleanKeywords.length === 0) {
     const byRecency = [...unique].sort((a, b) => {
@@ -165,6 +164,7 @@ export function rankDocuments(
     };
   }
 
+  const now = Date.now();
   const scored = unique.map((d) => {
     const hay = norm(`${d.title} ${d.text}`);
     const match = scoreDocument(d.title, hay, cleanKeywords, d.publishedAt, now);

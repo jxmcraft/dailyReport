@@ -33,17 +33,12 @@ export default async function ApproveReportPage({
 
   await expireApprovalIfNeeded(report.id, report.timestamp);
 
-  const refreshed =
-    report.emailDeliveryStatus === "PENDING_REVIEW"
-      ? await prisma.intelligenceReport.findUnique({
-          where: { id: reportId },
-          include: {
-            agent: {
-              include: { deliveryChannels: { take: 1, orderBy: { id: "asc" } } },
-            },
-          },
-        })
-      : report;
+  const refreshed = await prisma.intelligenceReport.findUnique({
+    where: { id: reportId },
+    include: {
+      agent: { include: { deliveryChannels: { take: 1, orderBy: { id: "asc" } } } },
+    },
+  });
   if (!refreshed) notFound();
 
   const access = resolveApprovalPageAccess(refreshed, token);
