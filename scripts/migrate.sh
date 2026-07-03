@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Local dev: create and apply migrations (prisma migrate dev).
+# Production: use `npm run db:migrate:deploy` once per release (see docs/azure/DEPLOY.md).
 set -euo pipefail
 
 if [ -z "${DATABASE_URL:-}" ]; then

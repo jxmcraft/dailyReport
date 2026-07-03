@@ -15,16 +15,19 @@ export async function POST(
   try {
     const result = await executeAgentPipeline(params.agentId);
     if (result.outcome === "skipped") {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            result.reason === "paused"
-              ? "Agent is paused."
-              : "Agent not found.",
-        },
-        { status: result.reason === "not_found" ? 404 : 409 }
-      );
+      const status =
+        result.reason === "not_found"
+          ? 404
+          : result.reason === "already_running"
+            ? 409
+            : 409;
+      const error =
+        result.reason === "paused"
+          ? "Agent is paused."
+          : result.reason === "already_running"
+            ? "A pipeline run is already in progress."
+            : "Agent not found.";
+      return NextResponse.json({ ok: false, error }, { status });
     }
     if (result.outcome === "no_data" || result.outcome === "error") {
       return NextResponse.json(

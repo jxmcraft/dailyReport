@@ -27,6 +27,7 @@ import { deliverySubtitle } from "@/lib/delivery-subtitle";
 import { isMicrosoftGraphConfigured } from "@/lib/microsoft-graph";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 export default async function AgentDetailPage({
   params,

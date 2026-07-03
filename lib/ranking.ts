@@ -150,6 +150,21 @@ export function rankDocuments(
   const cleanKeywords = keywords.map((k) => k.trim()).filter(Boolean);
   const now = Date.now();
 
+  if (cleanKeywords.length === 0) {
+    const byRecency = [...unique].sort((a, b) => {
+      const tb = parsePublishedMs(b.publishedAt) ?? -1;
+      const ta = parsePublishedMs(a.publishedAt) ?? -1;
+      return tb - ta;
+    });
+    const passing = byRecency;
+    const ranked = passing.slice(0, k);
+    return {
+      ranked,
+      lowConfidence: passing.length < 3,
+      relevantCount: passing.length,
+    };
+  }
+
   const scored = unique.map((d) => {
     const hay = norm(`${d.title} ${d.text}`);
     const match = scoreDocument(d.title, hay, cleanKeywords, d.publishedAt, now);

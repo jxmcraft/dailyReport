@@ -309,17 +309,23 @@ export async function triggerPipeline(agentId: string) {
     throw new Error("A pipeline run is already in progress.");
   }
 
-  void executeAgentPipeline(agentId)
-    .then((result) => {
-      if (result.outcome === "no_data" || result.outcome === "error") {
-        console.warn(`Pipeline ${result.outcome} for ${agentId}:`, result.message);
-      }
-    })
-    .catch((error) => {
-      console.error(`Pipeline failed for ${agentId}:`, error);
-    });
+  const result = await executeAgentPipeline(agentId);
+  if (result.outcome === "skipped") {
+    if (result.reason === "paused") {
+      throw new Error("Cannot trigger a paused agent. Resume it first.");
+    }
+    if (result.reason === "already_running") {
+      throw new Error("A pipeline run is already in progress.");
+    }
+    throw new Error("Agent not found.");
+  }
+  if (result.outcome === "no_data" || result.outcome === "error") {
+    throw new Error(result.message);
+  }
 
-  return { ok: true as const, started: true as const };
+  revalidateAgent(agentId);
+  revalidatePath("/");
+  return { ok: true as const };
 }
 
 export async function sendReportEmail(reportId: string) {

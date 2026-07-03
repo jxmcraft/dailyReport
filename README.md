@@ -12,10 +12,18 @@ PulseAgent is a Next.js dashboard for scheduled intelligence agents. Each agent 
 
 2. Set `DATABASE_URL` and at least one LLM key (`OPENROUTER_API_KEY` or `DEEPSEEK_API_KEY` with `LLM_PROVIDER=deepseek`).
 
-3. Sync the database schema:
+3. Apply database migrations:
 
    ```bash
-   npx prisma db push
+   npx prisma migrate deploy
+   ```
+
+   For a new local database this creates all tables. If you previously used `db push`, either reset (`npx prisma migrate reset`) or baseline with `npx prisma migrate resolve --applied 20260629120000_init` — see [`docs/azure/DEPLOY.md`](docs/azure/DEPLOY.md).
+
+   To create a new migration during development:
+
+   ```bash
+   bash scripts/migrate.sh <migration-name>
    ```
 
 4. Start the web app:
@@ -53,7 +61,8 @@ LLM timeout, source fetch timeout, and poll interval are editable on the Setting
 | `seed.ts` | **Destructive (dev only).** Deletes all agents, then inserts one demo agent. Refused when `NODE_ENV=production`. | `npx tsx --env-file=.env scripts/seed.ts` |
 | `run-pipeline.ts` | Run the pipeline once for an agent (CLI testing). | `npx tsx --env-file=.env scripts/run-pipeline.ts <agentId>` |
 | `scheduler.ts` | Long-running worker: every 30s, runs ACTIVE agents whose cron matches local time. | `npm run scheduler` |
-| `migrate.sh` | Runs `prisma migrate dev` (local migration workflow). | `bash scripts/migrate.sh <migration-name>` |
+| `migrate.sh` | Creates a new migration in dev (`prisma migrate dev`). | `bash scripts/migrate.sh <migration-name>` |
+| `db:migrate:deploy` | Applies pending migrations (production / release). | `npm run db:migrate:deploy` |
 
 ## Production environment
 
@@ -77,7 +86,7 @@ Timeouts (LLM, source fetch, poll interval) are configured on the **Settings** p
 
 **Security:** There is no authentication on the web UI or API routes. Treat the deployment as private until you add access control.
 
-**Azure / container deploy:** See [`docs/azure/DEPLOY.md`](docs/azure/DEPLOY.md). You need separate processes for `npm run start` (web) and `npm run scheduler`, plus managed PostgreSQL. Microsoft Graph setup: [`docs/azure/MICROSOFT_GRAPH.md`](docs/azure/MICROSOFT_GRAPH.md).
+**Azure / container deploy:** See [`docs/azure/DEPLOY.md`](docs/azure/DEPLOY.md) and [`infra/azure/README.md`](infra/azure/README.md). Provision with Bicep, run `npm run db:migrate:deploy` before each release, then update web + scheduler Container Apps. Microsoft Graph: [`docs/azure/MICROSOFT_GRAPH.md`](docs/azure/MICROSOFT_GRAPH.md).
 
 ## Tests and quality
 

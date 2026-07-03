@@ -1,8 +1,36 @@
+import http from "node:http";
+
 import { PrismaClient } from "@prisma/client";
 
 import { executeAgentPipeline } from "../lib/pipeline";
+import { recoverStaleRunningAgents } from "../lib/agent-recovery";
+import {
+  buildMinuteKey,
+  pruneOldSchedulerFires,
+  tryRecordCronFire,
+} from "../lib/scheduler-fire";
 
 const prisma = new PrismaClient();
+
+const HEALTH_PORT = Number(process.env.SCHEDULER_HEALTH_PORT ?? "3001");
+let lastTickAt: string | null = null;
+
+function startHealthServer() {
+  const server = http.createServer((req, res) => {
+    if (req.url === "/health" && req.method === "GET") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({ status: "ok", lastTickAt })
+      );
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  server.listen(HEALTH_PORT, () => {
+    console.log(`Scheduler health listening on :${HEALTH_PORT}/health`);
+  });
+}
 
 // Cron is evaluated against local machine time, matching the time the user picks
 // in the schedule UI (CronConfigurator stores the literal local HH:MM).
@@ -35,13 +63,10 @@ function cronMatches(expr: string, date: Date): boolean {
   );
 }
 
-// Dedupe key at minute granularity so an agent fires at most once per matching
-// minute, even though we tick more often than once a minute.
-const triggered = new Set<string>();
-
 async function tick() {
   const now = new Date();
-  const minuteStamp = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}-${now.getMinutes()}`;
+  lastTickAt = now.toISOString();
+  const minuteKey = buildMinuteKey(now);
 
   // Only ACTIVE agents are eligible; one mid-run sets itself to RUNNING and is
   // skipped until it returns to ACTIVE, which prevents overlapping runs.
@@ -49,9 +74,8 @@ async function tick() {
 
   for (const agent of agents) {
     if (!cronMatches(agent.cronSchedule, now)) continue;
-    const key = `${agent.id}:${minuteStamp}`;
-    if (triggered.has(key)) continue;
-    triggered.add(key);
+    const recorded = await tryRecordCronFire(agent.id, minuteKey);
+    if (!recorded) continue;
 
     console.log(`[${now.toISOString()}] Triggering "${agent.name}" (${agent.id})`);
     try {
@@ -66,10 +90,17 @@ async function tick() {
     }
   }
 
-  if (triggered.size > 5000) triggered.clear();
+  pruneOldSchedulerFires().catch((error) =>
+    console.error("SchedulerFire prune failed:", error)
+  );
 }
 
 async function main() {
+  startHealthServer();
+  const recovered = await recoverStaleRunningAgents();
+  if (recovered > 0) {
+    console.warn(`Recovered ${recovered} stale RUNNING agent(s) on startup.`);
+  }
   console.log("PulseAgent scheduler running. Checking schedules every 30s. Ctrl+C to stop.");
   await tick();
   setInterval(() => {

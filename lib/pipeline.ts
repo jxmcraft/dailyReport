@@ -14,6 +14,7 @@ import {
   type SourceDiagnostic,
 } from "@/lib/sources";
 import { rankDocuments } from "@/lib/ranking";
+import { recoverStaleRunningAgents } from "@/lib/agent-recovery";
 import { buildOutputGuardrails } from "@/lib/report-intent";
 import {
   DEFAULT_MAX_NEWS_AGE_DAYS,
@@ -86,7 +87,8 @@ function buildProviderSpecs(
   keywords: string[],
   webpageSources: { id: string; apiEndpoint: string }[]
 ): ProviderSpec[] {
-  const specs = buildDefaultProviders(keywords);
+  const hasKeywords = keywords.map((k) => k.trim()).filter(Boolean).length > 0;
+  const specs = hasKeywords ? buildDefaultProviders(keywords) : [];
   for (const s of webpageSources) {
     if (s.apiEndpoint) specs.push(buildWebProvider(s.apiEndpoint, s.id));
   }
@@ -128,11 +130,13 @@ export type PipelineOutcome =
   | { outcome: "success" }
   | { outcome: "no_data"; message: string }
   | { outcome: "error"; message: string }
-  | { outcome: "skipped"; reason: "paused" | "not_found" };
+  | { outcome: "skipped"; reason: "paused" | "not_found" | "already_running" };
 
 export async function executeAgentPipeline(
   agentId: string
 ): Promise<PipelineOutcome> {
+  await recoverStaleRunningAgents();
+
   const agent = await prisma.agent.findUnique({
     where: { id: agentId },
     include: { dataSources: true, deliveryChannels: true },
@@ -140,7 +144,13 @@ export async function executeAgentPipeline(
   if (!agent) return { outcome: "skipped", reason: "not_found" };
   if (agent.status === "PAUSED") return { outcome: "skipped", reason: "paused" };
 
-  await updateAgentStatus(agentId, "RUNNING");
+  const claimed = await prisma.agent.updateMany({
+    where: { id: agentId, status: "ACTIVE" },
+    data: { status: "RUNNING" },
+  });
+  if (claimed.count === 0) {
+    return { outcome: "skipped", reason: "already_running" };
+  }
 
   const { sourceFetchTimeoutMs } = await getWorkspaceSettings();
 

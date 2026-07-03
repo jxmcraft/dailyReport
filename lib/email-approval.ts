@@ -166,3 +166,72 @@ export function emailDeliveryStatusLabel(status: EmailDeliveryStatus): string | 
       return null;
   }
 }
+
+export type ApprovalPageReport = {
+  id: string;
+  timestamp: Date;
+  emailDeliveryStatus: EmailDeliveryStatus;
+  emailApprovalTokenHash: string | null;
+  generatedMarkdown: string;
+  status: string;
+  statusNotes: string[];
+  rawIngestedDataCount: number;
+  sourcesUsed: unknown;
+  sourceDiagnostics: unknown;
+  agent: {
+    name: string;
+    id: string;
+    deliveryChannels: DeliveryChannel[];
+  };
+};
+
+export type ApprovalPageAccess =
+  | { kind: "ok"; showReportBody: true }
+  | { kind: "ok_distributed"; showReportBody: true }
+  | { kind: "invalid_token" }
+  | { kind: "expired" }
+  | { kind: "not_awaiting_approval" };
+
+export function resolveApprovalPageAccess(
+  report: ApprovalPageReport,
+  token: string
+): ApprovalPageAccess {
+  if (report.emailDeliveryStatus === "DISTRIBUTED") {
+    return { kind: "ok_distributed", showReportBody: true };
+  }
+
+  if (report.emailDeliveryStatus === "EXPIRED") {
+    return { kind: "expired" };
+  }
+
+  if (isApprovalExpired(report.timestamp)) {
+    return { kind: "expired" };
+  }
+
+  if (report.emailDeliveryStatus !== "PENDING_REVIEW") {
+    return { kind: "not_awaiting_approval" };
+  }
+
+  try {
+    assertEmailApprovalSecret();
+  } catch {
+    return { kind: "invalid_token" };
+  }
+
+  const tokenHash = hashApprovalToken(token);
+  if (!report.emailApprovalTokenHash || report.emailApprovalTokenHash !== tokenHash) {
+    return { kind: "invalid_token" };
+  }
+
+  return { kind: "ok", showReportBody: true };
+}
+
+/** Mark report expired in DB when TTL elapsed (page load). */
+export async function expireApprovalIfNeeded(reportId: string, timestamp: Date): Promise<void> {
+  if (isApprovalExpired(timestamp)) {
+    await prisma.intelligenceReport.updateMany({
+      where: { id: reportId, emailDeliveryStatus: "PENDING_REVIEW" },
+      data: { emailDeliveryStatus: "EXPIRED" },
+    });
+  }
+}

@@ -101,3 +101,12 @@ model IntelligenceReport {
   emailApprovedAt        DateTime?
   emailApprovedBy        String?
 }
+
+model SchedulerFire {
+  agentId   String
+  minuteKey String
+  firedAt   DateTime @default(now())
+
+  @@id([agentId, minuteKey])
+  @@index([firedAt])
+}

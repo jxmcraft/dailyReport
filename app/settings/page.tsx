@@ -4,6 +4,8 @@ import { WorkspaceSettingsForm } from "@/components/workspace-settings-form";
 import { loadWorkspaceSettings } from "@/app/settings/actions";
 import { getLlmDisplayInfo } from "@/lib/llm";
 
+export const dynamic = "force-dynamic";
+
 export default async function SettingsPage() {
   const [llm, workspace] = await Promise.all([
     getLlmDisplayInfo(),

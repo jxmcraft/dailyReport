@@ -129,10 +129,12 @@ Phased bug-fix tracker. Tell an agent which phase to implement; check boxes when
 
 - **Severity:** Low
 - **Symptom:** Trigger shows success even when run aborts with no data.
-- **Root cause:** `executeAgentPipeline` returns void; route always `{ ok: true }`.
-- **Fix:** Return `{ outcome: 'success' | 'no_data' | 'error' | 'skipped' }`; surface in UI.
+- **Root cause:** `executeAgentPipeline` returns void; route always `{ ok: true }`; UI `triggerPipeline` fire-and-forgot.
+- **Fix:** Return `{ outcome: 'success' | 'no_data' | 'error' | 'skipped' }`; API route surfaces outcomes; `triggerPipeline` awaits pipeline and throws on failure; `maxDuration = 300` on agent page.
 - **Verify:**
   - [x] No-data run shows error in TriggerButton, not silent success.
+  - [x] API route returns 422 on no_data/error.
+  - [x] Manual trigger surfaces error message in UI.
 - **Status:** [x] Fixed
 
 ### P4-2: tsconfig excludes scripts/

@@ -18,7 +18,8 @@ export function ApprovePageReport({
       report={report}
       defaultOpen
       agentName={agentName}
-      showSendEmail
+      showDelete={false}
+      showSendEmail={false}
       requireEmailApproval
       onDeleted={() => router.push("/logs")}
     />

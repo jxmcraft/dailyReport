@@ -5,6 +5,8 @@ import {
   assertEmailApprovalSecret,
   generateApprovalToken,
   hashApprovalToken,
+  resolveApprovalPageAccess,
+  type ApprovalPageReport,
 } from "./email-approval";
 
 const ENV_KEY = "EMAIL_APPROVAL_SECRET";
@@ -50,4 +52,60 @@ test("generateApprovalToken returns stable hash when secret is set", () => {
     assert.equal(hashApprovalToken(token), hash);
     assert.equal(hashApprovalToken(token), hash);
   });
+});
+
+function sampleReport(
+  overrides: Partial<ApprovalPageReport> = {}
+): ApprovalPageReport {
+  return {
+    id: "report-1",
+    timestamp: new Date(),
+    emailDeliveryStatus: "PENDING_REVIEW",
+    emailApprovalTokenHash: null,
+    generatedMarkdown: "# Test",
+    status: "SUCCESS",
+    statusNotes: [],
+    rawIngestedDataCount: 1,
+    sourcesUsed: [],
+    sourceDiagnostics: null,
+    agent: {
+      id: "agent-1",
+      name: "Test Agent",
+      deliveryChannels: [],
+    },
+    ...overrides,
+  };
+}
+
+test("resolveApprovalPageAccess allows valid pending token", () => {
+  withEnv("pepper-value", () => {
+    const { token, hash } = generateApprovalToken();
+    const access = resolveApprovalPageAccess(
+      sampleReport({ emailApprovalTokenHash: hash }),
+      token
+    );
+    assert.equal(access.kind, "ok");
+  });
+});
+
+test("resolveApprovalPageAccess rejects wrong token", () => {
+  withEnv("pepper-value", () => {
+    const { hash } = generateApprovalToken();
+    const access = resolveApprovalPageAccess(
+      sampleReport({ emailApprovalTokenHash: hash }),
+      "wrong-token"
+    );
+    assert.equal(access.kind, "invalid_token");
+  });
+});
+
+test("resolveApprovalPageAccess allows distributed without token check", () => {
+  const access = resolveApprovalPageAccess(
+    sampleReport({
+      emailDeliveryStatus: "DISTRIBUTED",
+      emailApprovalTokenHash: null,
+    }),
+    "any"
+  );
+  assert.equal(access.kind, "ok_distributed");
 });
