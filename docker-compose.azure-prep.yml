@@ -42,7 +42,7 @@ services:
 
   scheduler:
     build: .
-    command: ["npm", "run", "scheduler"]
+    command: ["npm", "run", "scheduler:prod"]
     ports:
       - "3001:3001"
     env_file: .env

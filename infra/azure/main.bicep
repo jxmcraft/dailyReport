@@ -21,6 +21,9 @@ param postgresAdminLogin string = 'newsadmin'
 param postgresSku string = 'B_Standard_B1ms'
 param postgresDbName string = 'newsagent'
 
+@description('Create AcrPull + Key Vault Secrets User role assignments for Container App identities. Requires Owner or User Access Administrator on the RG/subscription. Set false if an admin will assign roles manually.')
+param assignManagedIdentityRoles bool = true
+
 var namePrefix = environmentName
 var postgresServerName = '${namePrefix}-pg-${uniqueString(resourceGroup().id)}'
 var acrName = replace('${namePrefix}acr${uniqueString(resourceGroup().id)}', '-', '')
@@ -112,7 +115,7 @@ module schedulerApp 'modules/containerApp.bicep' = {
     containerCommand: [
       'npm'
       'run'
-      'scheduler'
+      'scheduler:prod'
     ]
     acrLoginServer: acr.outputs.loginServer
     keyVaultUri: keyVault.outputs.vaultUri
@@ -136,16 +139,16 @@ module schedulerApp 'modules/containerApp.bicep' = {
 }
 
 resource acrResource 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
-  name: acr.outputs.name
+  name: acrName
 }
 
 resource keyVaultResource 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
-  name: keyVault.outputs.name
+  name: keyVaultName
 }
 
-resource acrPullWeb 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource acrPullWeb 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (assignManagedIdentityRoles) {
   scope: acrResource
-  name: guid(acrResource.id, webApp.outputs.principalId, 'acrPullWeb')
+  name: guid(resourceGroup().id, acrName, '${namePrefix}-web', 'acrPull')
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
     principalId: webApp.outputs.principalId
@@ -153,9 +156,9 @@ resource acrPullWeb 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   }
 }
 
-resource acrPullScheduler 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource acrPullScheduler 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (assignManagedIdentityRoles) {
   scope: acrResource
-  name: guid(acrResource.id, schedulerApp.outputs.principalId, 'acrPullScheduler')
+  name: guid(resourceGroup().id, acrName, '${namePrefix}-scheduler', 'acrPull')
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
     principalId: schedulerApp.outputs.principalId
@@ -163,9 +166,9 @@ resource acrPullScheduler 'Microsoft.Authorization/roleAssignments@2022-04-01' =
   }
 }
 
-resource kvSecretsWebRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource kvSecretsWebRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (assignManagedIdentityRoles) {
   scope: keyVaultResource
-  name: guid(keyVaultResource.id, webApp.outputs.principalId, 'kvSecretsWeb')
+  name: guid(resourceGroup().id, keyVaultName, '${namePrefix}-web', 'kvSecrets')
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
     principalId: webApp.outputs.principalId
@@ -173,9 +176,9 @@ resource kvSecretsWebRole 'Microsoft.Authorization/roleAssignments@2022-04-01' =
   }
 }
 
-resource kvSecretsSchedulerRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource kvSecretsSchedulerRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (assignManagedIdentityRoles) {
   scope: keyVaultResource
-  name: guid(keyVaultResource.id, schedulerApp.outputs.principalId, 'kvSecretsScheduler')
+  name: guid(resourceGroup().id, keyVaultName, '${namePrefix}-scheduler', 'kvSecrets')
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
     principalId: schedulerApp.outputs.principalId

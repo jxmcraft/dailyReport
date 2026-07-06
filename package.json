@@ -10,7 +10,8 @@
     "postinstall": "prisma generate",
     "test:unit": "node --import tsx --test lib/recency.test.ts lib/api-auth.test.ts lib/email-approval.test.ts lib/app-url.test.ts lib/scheduler-fire.test.ts lib/ranking.test.ts lib/agent-recovery.test.ts",
     "db:migrate:deploy": "prisma migrate deploy",
-    "scheduler": "tsx --env-file=.env scripts/scheduler.ts"
+    "scheduler": "tsx --env-file=.env scripts/scheduler.ts",
+    "scheduler:prod": "tsx scripts/scheduler.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

@@ -7,7 +7,8 @@ Provisions PostgreSQL, ACR, Key Vault, Container Apps Environment, **newsagent-w
 - [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) with `az bicep` support
 - Docker (for building the app image)
 - Resource group (created below if needed)
-- Deploying user needs **Owner** or **User Access Administrator** on the subscription/RG (role assignments for managed identities)
+- **Role assignments (default):** deploying user needs **Owner** or **User Access Administrator** on the subscription/RG
+- **Contributor only:** set `assignManagedIdentityRoles=false` and have an admin assign roles manually (see below)
 
 ## 1. Validate templates
 
@@ -25,7 +26,7 @@ az deployment group create \
   --resource-group rg-newsagent \
   --template-file infra/azure/main.bicep \
   --parameters infra/azure/main.bicepparam \
-  --parameters postgresAdminPassword='YOUR_STRONG_PASSWORD' \
+  --parameters postgresAdminPassword="${POSTGRES_ADMIN_PASSWORD}" \
   --parameters containerImage='PLACEHOLDER:latest' \
   --parameters appUrl='https://will-update-after-deploy.example.com'
 ```
@@ -38,7 +39,36 @@ az deployment group show -g rg-newsagent -n main --query properties.outputs
 
 Save `acrName`, `postgresFqdn`, `keyVaultName`, `webAppName`, `schedulerAppName`.
 
-**First deploy:** Container Apps may fail to pull secrets until managed-identity role assignments propagate (1–3 minutes). If revisions are unhealthy, wait and run:
+### Contributor without role-assignment permission
+
+If deploy fails with `roleAssignments/write` denied, redeploy with role assignment creation skipped:
+
+```powershell
+az deployment group create `
+  -g rg-newsagent `
+  -f infra/azure/main.bicep `
+  -p infra/azure/main.bicepparam `
+  -p assignManagedIdentityRoles=false `
+  -p postgresAdminPassword='YOUR_STRONG_PASSWORD'
+```
+
+Then ask an **Owner** or **User Access Administrator** to grant:
+
+| Role | Scope | Principal |
+|------|--------|-----------|
+| **AcrPull** | Your ACR | Managed identity of `newsagent-web` |
+| **AcrPull** | Your ACR | Managed identity of `newsagent-scheduler` |
+| **Key Vault Secrets User** | Your Key Vault | Managed identity of `newsagent-web` |
+| **Key Vault Secrets User** | Your Key Vault | Managed identity of `newsagent-scheduler` |
+
+Get principal IDs:
+
+```powershell
+az containerapp show -n newsagent-web -g rg-newsagent --query identity.principalId -o tsv
+az containerapp show -n newsagent-scheduler -g rg-newsagent --query identity.principalId -o tsv
+```
+
+**First deploy:** Container Apps may fail to pull images/secrets until those roles exist (1–3 minutes after assignment). If revisions are unhealthy, wait and run:
 
 ```bash
 az containerapp revision restart -n newsagent-web -g rg-newsagent

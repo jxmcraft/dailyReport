@@ -5,7 +5,7 @@ NewsAgent needs **two long-running processes** plus **PostgreSQL**:
 | Process | Command | Notes |
 | --- | --- | --- |
 | Web | `npm run start` | Next.js dashboard + API; health at `/api/health` |
-| Scheduler | `npm run scheduler` | Cron matcher; health at `:3001/health`; **min 1 / max 1 replica** |
+| Scheduler | `npm run scheduler:prod` | Cron matcher; health at `:3001/health`; **min 1 / max 1 replica** |
 | Database | PostgreSQL | Prisma via `DATABASE_URL`; use **migrations** in production |
 
 ## Infrastructure (Bicep)
@@ -19,7 +19,7 @@ Resources created:
 3. **Log Analytics** + **Container Apps Environment**
 4. **Key Vault** (`DATABASE-URL` seeded at deploy)
 5. **Container App `newsagent-web`** — external ingress, liveness/readiness on `/api/health`
-6. **Container App `newsagent-scheduler`** — no ingress; command `npm run scheduler`; liveness on `/health:3001`
+6. **Container App `newsagent-scheduler`** — no ingress; command `npm run scheduler:prod`; liveness on `/health:3001`
 
 Validate templates locally:
 
@@ -33,13 +33,43 @@ Run in order for each production release:
 
 ### 1. Provision or update infrastructure
 
+**PowerShell (recommended on Windows):**
+
+```powershell
+az group create -n rg-newsagent -l eastus
+
+# Option A: env var (matches infra/azure/main.bicepparam)
+$env:POSTGRES_ADMIN_PASSWORD = 'YOUR_STRONG_PASSWORD'
+az deployment group create `
+  -g rg-newsagent `
+  -f infra/azure/main.bicep `
+  -p infra/azure/main.bicepparam
+
+# Option B: pass password on CLI
+az deployment group create `
+  -g rg-newsagent `
+  -f infra/azure/main.bicep `
+  -p infra/azure/main.bicepparam `
+  -p postgresAdminPassword='YOUR_STRONG_PASSWORD'
+
+# Contributor only (no roleAssignments/write) — admin must assign AcrPull + Key Vault Secrets User manually
+az deployment group create `
+  -g rg-newsagent `
+  -f infra/azure/main.bicep `
+  -p infra/azure/main.bicepparam `
+  -p assignManagedIdentityRoles=false `
+  -p postgresAdminPassword='YOUR_STRONG_PASSWORD'
+```
+
+**Bash:**
+
 ```bash
 az group create -n rg-newsagent -l eastus
+export POSTGRES_ADMIN_PASSWORD='YOUR_STRONG_PASSWORD'
 az deployment group create \
   -g rg-newsagent \
   -f infra/azure/main.bicep \
-  -p infra/azure/main.bicepparam \
-  -p postgresAdminPassword='...'
+  -p infra/azure/main.bicepparam
 ```
 
 ### 2. Build and push image
@@ -90,7 +120,7 @@ docker build -t newsagent:latest .
 ```
 
 - **Web** container command: default (`npm run start`)
-- **Scheduler** container command: `npm run scheduler`
+- **Scheduler** container command: `npm run scheduler:prod` (env from Key Vault / Container App — no `.env` file in image)
 
 ## Required environment variables
 
