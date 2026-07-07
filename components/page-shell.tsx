@@ -87,7 +87,7 @@ export function SectionLabel({
   description?: string;
 }) {
   return (
-    <div className="mb-4 mt-2">
+    <div className="mb-3 mt-2">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
         {title}
       </h2>

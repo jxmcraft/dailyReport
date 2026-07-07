@@ -6,7 +6,6 @@ import { CollapsibleSection } from "@/components/collapsible-section";
 import { DeleteReportButton } from "@/components/delete-report-button";
 import { SendEmailButton } from "@/components/send-email-button";
 import { EmailDeliveryStatusBadge, ReportStatusBadge } from "@/components/status-badge";
-import { SourceHealthCard } from "@/components/source-health-card";
 import { SourcesAccordion } from "@/components/sources-accordion";
 import { formatDate } from "@/lib/format-date";
 import { formatReportSubtitle } from "@/lib/report-subtitle";
@@ -27,32 +26,57 @@ export type ReportEntryData = Pick<
   sourceDiagnostics?: SourceDiagnostic[] | null;
 };
 
-export function ReportEntry({
+function ReportActions({
   report,
-  defaultOpen = false,
-  agentName,
-  showDelete = true,
-  deleteDisabled = false,
-  onDeleted,
-  showSendEmail = false,
-  requireEmailApproval = false,
-  sendEmailDisabled = false,
+  showSendEmail,
+  showDelete,
+  requireEmailApproval,
+  sendEmailDisabled,
+  deleteDisabled,
   onEmailSent,
+  onDeleted,
 }: {
   report: ReportEntryData;
-  defaultOpen?: boolean;
-  agentName?: string;
-  showDelete?: boolean;
-  deleteDisabled?: boolean;
-  onDeleted?: () => void;
-  showSendEmail?: boolean;
-  requireEmailApproval?: boolean;
-  sendEmailDisabled?: boolean;
+  showSendEmail: boolean;
+  showDelete: boolean;
+  requireEmailApproval: boolean;
+  sendEmailDisabled: boolean;
+  deleteDisabled: boolean;
   onEmailSent?: (status: EmailDeliveryStatus) => void;
+  onDeleted?: () => void;
 }) {
-  const subtitle = formatReportSubtitle(report, agentName);
-  const hasDiagnostics =
-    report.sourceDiagnostics && report.sourceDiagnostics.length > 0;
+  if (!showSendEmail && !showDelete) return null;
+
+  return (
+    <div className="flex shrink-0 gap-2">
+      {showSendEmail ? (
+        <SendEmailButton
+          reportId={report.id}
+          reportLabel={formatDate(report.timestamp)}
+          emailDeliveryStatus={report.emailDeliveryStatus}
+          requiresApproval={requireEmailApproval}
+          disabled={sendEmailDisabled}
+          onSent={onEmailSent}
+        />
+      ) : null}
+      {showDelete ? (
+        <DeleteReportButton
+          reportId={report.id}
+          reportLabel={formatDate(report.timestamp)}
+          pendingApproval={report.emailDeliveryStatus === "PENDING_REVIEW"}
+          disabled={deleteDisabled}
+          onDeleted={onDeleted}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ReportBody({
+  report,
+}: {
+  report: ReportEntryData;
+}) {
   const showCriticalNotes =
     report.status === "CRITICAL_ERROR" &&
     report.statusNotes &&
@@ -63,42 +87,7 @@ export function ReportEntry({
     report.statusNotes.length > 0;
 
   return (
-    <div className="space-y-1">
-      {showSendEmail || showDelete ? (
-        <div className="flex justify-end gap-2">
-          {showSendEmail ? (
-            <SendEmailButton
-              reportId={report.id}
-              reportLabel={formatDate(report.timestamp)}
-              emailDeliveryStatus={report.emailDeliveryStatus}
-              requiresApproval={requireEmailApproval}
-              disabled={sendEmailDisabled}
-              onSent={onEmailSent}
-            />
-          ) : null}
-          {showDelete ? (
-            <DeleteReportButton
-              reportId={report.id}
-              reportLabel={formatDate(report.timestamp)}
-              pendingApproval={report.emailDeliveryStatus === "PENDING_REVIEW"}
-              disabled={deleteDisabled}
-              onDeleted={onDeleted}
-            />
-          ) : null}
-        </div>
-      ) : null}
-      <CollapsibleSection
-        variant="inset"
-        title={formatDate(report.timestamp)}
-        subtitle={subtitle}
-        defaultOpen={defaultOpen}
-        badge={
-          <span className="flex flex-wrap items-center gap-2">
-            <ReportStatusBadge status={report.status} />
-            <EmailDeliveryStatusBadge status={report.emailDeliveryStatus} />
-          </span>
-        }
-      >
+    <>
       {showCriticalNotes ? (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50/80 p-4">
           <p className="mb-2 text-sm font-medium text-red-900">Run failed</p>
@@ -121,12 +110,7 @@ export function ReportEntry({
           </ul>
         </div>
       ) : null}
-      {report.status === "CRITICAL_ERROR" && hasDiagnostics ? (
-        <div className="mb-4">
-          <SourceHealthCard diagnostics={report.sourceDiagnostics!} />
-        </div>
-      ) : null}
-      <div className="prose-report rounded-lg border border-border/60 bg-white p-5">
+      <div className="prose-report rounded-lg border border-border/60 bg-white p-4">
         <ReactMarkdown>{report.generatedMarkdown}</ReactMarkdown>
       </div>
       {report.sourcesUsed.length > 0 ? (
@@ -134,11 +118,100 @@ export function ReportEntry({
           <SourcesAccordion sources={report.sourcesUsed} />
         </div>
       ) : null}
-      {report.status !== "CRITICAL_ERROR" && hasDiagnostics ? (
-        <div className="mt-4">
-          <SourceHealthCard diagnostics={report.sourceDiagnostics!} />
+    </>
+  );
+}
+
+export function ReportEntry({
+  report,
+  defaultOpen = false,
+  variant = "collapsible",
+  agentName,
+  showDelete = true,
+  deleteDisabled = false,
+  onDeleted,
+  showSendEmail = false,
+  requireEmailApproval = false,
+  sendEmailDisabled = false,
+  onEmailSent,
+}: {
+  report: ReportEntryData;
+  defaultOpen?: boolean;
+  variant?: "collapsible" | "expanded";
+  agentName?: string;
+  showDelete?: boolean;
+  deleteDisabled?: boolean;
+  onDeleted?: () => void;
+  showSendEmail?: boolean;
+  requireEmailApproval?: boolean;
+  sendEmailDisabled?: boolean;
+  onEmailSent?: (status: EmailDeliveryStatus) => void;
+}) {
+  const subtitle = formatReportSubtitle(report, agentName);
+
+  if (variant === "expanded") {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold text-foreground">
+                {formatDate(report.timestamp)}
+              </span>
+              <ReportStatusBadge status={report.status} />
+              <EmailDeliveryStatusBadge status={report.emailDeliveryStatus} />
+            </div>
+            {subtitle ? (
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {subtitle}
+              </p>
+            ) : null}
+          </div>
+          <ReportActions
+            report={report}
+            showSendEmail={showSendEmail}
+            showDelete={showDelete}
+            requireEmailApproval={requireEmailApproval}
+            sendEmailDisabled={sendEmailDisabled}
+            deleteDisabled={deleteDisabled}
+            onEmailSent={onEmailSent}
+            onDeleted={onDeleted}
+          />
+        </div>
+        <ReportBody report={report} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      {showSendEmail || showDelete ? (
+        <div className="flex justify-end gap-2">
+          <ReportActions
+            report={report}
+            showSendEmail={showSendEmail}
+            showDelete={showDelete}
+            requireEmailApproval={requireEmailApproval}
+            sendEmailDisabled={sendEmailDisabled}
+            deleteDisabled={deleteDisabled}
+            onEmailSent={onEmailSent}
+            onDeleted={onDeleted}
+          />
         </div>
       ) : null}
+      <CollapsibleSection
+        variant="inset"
+        title={formatDate(report.timestamp)}
+        subtitle={subtitle}
+        defaultOpen={defaultOpen}
+        badge={
+          <span className="flex flex-wrap items-center gap-2">
+            <ReportStatusBadge status={report.status} />
+            <EmailDeliveryStatusBadge status={report.emailDeliveryStatus} />
+          </span>
+        }
+      >
+        <ReportBody report={report} />
       </CollapsibleSection>
     </div>
   );
