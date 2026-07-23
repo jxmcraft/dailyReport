@@ -1,13 +1,13 @@
 import { Prisma, type AgentStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { TOP_K } from "@/lib/constants";
-import { callReportLLM } from "@/lib/llm";
+import { callReportLLM, getReportContextTokenLimit } from "@/lib/llm";
 import { dispatchToChannel } from "@/lib/delivery";
 import { getWorkspaceSettings } from "@/lib/workspace-settings";
 import {
+  type BuiltInProviderSettings,
   buildDefaultProviders,
-  buildWebProvider,
+  buildWebProviderWithExpansion,
   ingestProvider,
   type ProviderSpec,
   type RankedDocument,
@@ -26,7 +26,7 @@ import type { SourceMetadata } from "@/types/agent";
 
 export type { SourceDiagnostic } from "@/lib/sources";
 
-const TOKEN_LIMIT = 128000;
+// Prefer more ranked docs over longer snippets when using larger context windows.
 const EVIDENCE_SNIPPET_CHARS = 800;
 
 async function updateAgentStatus(agentId: string, status: AgentStatus) {
@@ -43,11 +43,12 @@ async function synthesizeReport(
   systemPrompt: string,
   context: string
 ): Promise<string> {
-  if (estimateTokens(context) <= TOKEN_LIMIT) {
+  const tokenLimit = getReportContextTokenLimit();
+  if (estimateTokens(context) <= tokenLimit) {
     return callReportLLM(systemPrompt, context);
   }
 
-  const chunkChars = TOKEN_LIMIT * 4;
+  const chunkChars = tokenLimit * 4;
   const chunks: string[] = [];
   for (let i = 0; i < context.length; i += chunkChars) {
     chunks.push(context.slice(i, i + chunkChars));
@@ -85,12 +86,18 @@ function buildEvidenceContext(docs: RankedDocument[]): string {
 // always added as scrape sources.
 function buildProviderSpecs(
   keywords: string[],
-  webpageSources: { id: string; apiEndpoint: string }[]
+  webpageSources: { id: string; apiEndpoint: string }[],
+  builtIns: BuiltInProviderSettings,
+  shallowScrapeMaxLinks: number
 ): ProviderSpec[] {
   const hasKeywords = keywords.map((k) => k.trim()).filter(Boolean).length > 0;
-  const specs = hasKeywords ? buildDefaultProviders(keywords) : [];
+  const specs = hasKeywords ? buildDefaultProviders(keywords, builtIns) : [];
   for (const s of webpageSources) {
-    if (s.apiEndpoint) specs.push(buildWebProvider(s.apiEndpoint, s.id));
+    if (s.apiEndpoint) {
+      specs.push(
+        buildWebProviderWithExpansion(s.apiEndpoint, s.id, shallowScrapeMaxLinks)
+      );
+    }
   }
   const seen = new Set<string>();
   return specs.filter((s) => {
@@ -127,7 +134,12 @@ function buildStatusNotes(
 }
 
 export type PipelineOutcome =
-  | { outcome: "success" }
+  | {
+      outcome: "success";
+      reportId: string;
+      reportStatus: "SUCCESS" | "PARTIAL_FAILURE";
+      deliveryFailed: boolean;
+    }
   | { outcome: "no_data"; message: string }
   | { outcome: "error"; message: string }
   | { outcome: "skipped"; reason: "paused" | "not_found" | "already_running" };
@@ -136,20 +148,27 @@ export async function executeAgentPipeline(
   agentId: string
 ): Promise<PipelineOutcome> {
   await recoverStaleRunningAgents();
-
-  const agent = await prisma.agent.findUnique({
-    where: { id: agentId },
-    include: { dataSources: true, deliveryChannels: true },
-  });
-  if (!agent) return { outcome: "skipped", reason: "not_found" };
-  if (agent.status === "PAUSED") return { outcome: "skipped", reason: "paused" };
-
   const claimed = await prisma.agent.updateMany({
     where: { id: agentId, status: "ACTIVE" },
     data: { status: "RUNNING" },
   });
   if (claimed.count === 0) {
+    const existing = await prisma.agent.findUnique({
+      where: { id: agentId },
+      select: { status: true },
+    });
+    if (!existing) return { outcome: "skipped", reason: "not_found" };
+    if (existing.status === "PAUSED") return { outcome: "skipped", reason: "paused" };
     return { outcome: "skipped", reason: "already_running" };
+  }
+
+  const agent = await prisma.agent.findUnique({
+    where: { id: agentId },
+    include: { dataSources: true, deliveryChannels: true },
+  });
+  if (!agent) {
+    await updateAgentStatus(agentId, "ACTIVE");
+    return { outcome: "skipped", reason: "not_found" };
   }
 
   const { sourceFetchTimeoutMs } = await getWorkspaceSettings();
@@ -164,7 +183,17 @@ export async function executeAgentPipeline(
     const webpageSources = agent.dataSources.filter(
       (s) => s.sourceType === "CUSTOM_SCRAPE"
     );
-    const specs = buildProviderSpecs(agent.topicKeywords, webpageSources);
+    const specs = buildProviderSpecs(
+      agent.topicKeywords,
+      webpageSources,
+      {
+        enableNewsApi: agent.enableNewsApi,
+        enableReddit: agent.enableReddit,
+        enableHackerNews: agent.enableHackerNews,
+        enableGoogleSearch: agent.enableGoogleSearch,
+      },
+      agent.shallowScrapeMaxLinks
+    );
 
     const results = await Promise.all(
       specs.map((s) => ingestProvider(s, sourceFetchTimeoutMs))
@@ -181,7 +210,7 @@ export async function executeAgentPipeline(
     const { ranked, lowConfidence, relevantCount } = rankDocuments(
       agent.topicKeywords,
       recentDocs,
-      TOP_K,
+      agent.maxRankedSources,
       {
         minScore: agent.relevanceMinScore,
         matchMode: agent.keywordMatchMode === "AND" ? "AND" : "OR",
@@ -305,8 +334,19 @@ export async function executeAgentPipeline(
           statusNotes: notes,
         },
       });
+      return {
+        outcome: "success",
+        reportId: report.id,
+        reportStatus: "PARTIAL_FAILURE",
+        deliveryFailed: true,
+      };
     }
-    return { outcome: "success" };
+    return {
+      outcome: "success",
+      reportId: report.id,
+      reportStatus: preliminaryPartial ? "PARTIAL_FAILURE" : "SUCCESS",
+      deliveryFailed: false,
+    };
   } catch (error) {
     const baseMessage =
       error instanceof Error ? error.message : String(error);

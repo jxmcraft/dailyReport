@@ -10,7 +10,7 @@ param containerImage string
 @description('Public base URL for the web app (no trailing slash)')
 param appUrl string
 
-@description('IANA timezone for the scheduler')
+@description('IANA timezone for the scheduler (co-located in the same container)')
 param tz string = 'UTC'
 
 @secure()
@@ -76,6 +76,8 @@ module containerAppsEnv 'modules/containerAppsEnv.bicep' = {
   }
 }
 
+// Single Container App runs Next.js + cron scheduler (see scripts/docker-entrypoint.sh).
+// maxReplicas: 1 keeps one scheduler process and minimizes cost.
 module webApp 'modules/containerApp.bicep' = {
   name: 'webApp'
   params: {
@@ -87,48 +89,16 @@ module webApp 'modules/containerApp.bicep' = {
     keyVaultUri: keyVault.outputs.vaultUri
     ingressEnabled: true
     targetPort: 3000
-    healthPath: '/api/health'
+    readinessPath: '/api/health'
+    livenessPath: '/api/health/live'
     healthPort: 3000
     minReplicas: 1
-    maxReplicas: 3
+    maxReplicas: 1
     plainEnv: [
       { name: 'NODE_ENV', value: 'production' }
       { name: 'PORT', value: '3000' }
       { name: 'APP_URL', value: appUrl }
       { name: 'TZ', value: tz }
-      { name: 'LLM_PROVIDER', value: 'openrouter' }
-      { name: 'EMAIL_PROVIDER', value: 'smtp' }
-    ]
-    keyVaultSecretNames: [
-      'DATABASE-URL'
-    ]
-  }
-}
-
-module schedulerApp 'modules/containerApp.bicep' = {
-  name: 'schedulerApp'
-  params: {
-    location: location
-    name: '${namePrefix}-scheduler'
-    environmentId: containerAppsEnv.outputs.environmentId
-    containerImage: containerImage
-    containerCommand: [
-      'npm'
-      'run'
-      'scheduler:prod'
-    ]
-    acrLoginServer: acr.outputs.loginServer
-    keyVaultUri: keyVault.outputs.vaultUri
-    ingressEnabled: false
-    targetPort: 3001
-    healthPath: '/health'
-    healthPort: 3001
-    minReplicas: 1
-    maxReplicas: 1
-    plainEnv: [
-      { name: 'NODE_ENV', value: 'production' }
-      { name: 'TZ', value: tz }
-      { name: 'SCHEDULER_HEALTH_PORT', value: '3001' }
       { name: 'LLM_PROVIDER', value: 'openrouter' }
       { name: 'EMAIL_PROVIDER', value: 'smtp' }
     ]
@@ -156,32 +126,12 @@ resource acrPullWeb 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (a
   }
 }
 
-resource acrPullScheduler 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (assignManagedIdentityRoles) {
-  scope: acrResource
-  name: guid(resourceGroup().id, acrName, '${namePrefix}-scheduler', 'acrPull')
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
-    principalId: schedulerApp.outputs.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
 resource kvSecretsWebRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (assignManagedIdentityRoles) {
   scope: keyVaultResource
   name: guid(resourceGroup().id, keyVaultName, '${namePrefix}-web', 'kvSecrets')
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
     principalId: webApp.outputs.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-resource kvSecretsSchedulerRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (assignManagedIdentityRoles) {
-  scope: keyVaultResource
-  name: guid(resourceGroup().id, keyVaultName, '${namePrefix}-scheduler', 'kvSecrets')
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
-    principalId: schedulerApp.outputs.principalId
     principalType: 'ServicePrincipal'
   }
 }
@@ -193,5 +143,4 @@ output keyVaultName string = keyVault.outputs.name
 output keyVaultUri string = keyVault.outputs.vaultUri
 output webAppFqdn string = webApp.outputs.fqdn
 output webAppName string = webApp.outputs.name
-output schedulerAppName string = schedulerApp.outputs.name
 output containerAppsEnvironmentName string = containerAppsEnv.outputs.name

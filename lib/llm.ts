@@ -1,9 +1,15 @@
 import { getWorkspaceSettings } from "@/lib/workspace-settings";
 import { envSecret } from "@/lib/env";
+import { resolveChatCompletionsUrl } from "@/lib/llm-url";
 
 const DEFAULT_OPENROUTER_MODEL = "poolside/laguna-m.1:free";
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-chat";
 const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
+const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+/** Context window for report synthesis (map-reduce threshold). Same size today; single source of truth per provider. */
+const DEEPSEEK_CONTEXT_TOKEN_LIMIT = 128_000;
+const OPENROUTER_CONTEXT_TOKEN_LIMIT = 128_000;
 
 export type LlmProvider = "openrouter" | "deepseek";
 
@@ -11,6 +17,13 @@ function resolveProvider(): LlmProvider {
   const raw = envSecret("LLM_PROVIDER")?.toLowerCase();
   if (raw === "deepseek") return "deepseek";
   return "openrouter";
+}
+
+/** Token budget for evidence context before map-reduce. Prefer more docs over longer snippets. */
+export function getReportContextTokenLimit(): number {
+  return resolveProvider() === "deepseek"
+    ? DEEPSEEK_CONTEXT_TOKEN_LIMIT
+    : OPENROUTER_CONTEXT_TOKEN_LIMIT;
 }
 
 function openRouterModel(forOptimizer: boolean): string {
@@ -39,6 +52,8 @@ export async function getLlmDisplayInfo(): Promise<{
   optimizerModel: string;
   llmTimeoutSec: number;
   sourceFetchTimeoutSec: number;
+  /** Resolved chat completions endpoint (no secrets). */
+  chatEndpoint: string;
 }> {
   const settings = await getWorkspaceSettings();
   const provider = resolveProvider();
@@ -50,6 +65,7 @@ export async function getLlmDisplayInfo(): Promise<{
       optimizerModel: model,
       llmTimeoutSec: settings.llmTimeoutMs / 1000,
       sourceFetchTimeoutSec: settings.sourceFetchTimeoutMs / 1000,
+      chatEndpoint: resolveChatCompletionsUrl(deepSeekBaseUrl()),
     };
   }
   return {
@@ -58,11 +74,12 @@ export async function getLlmDisplayInfo(): Promise<{
     optimizerModel: openRouterModel(true),
     llmTimeoutSec: settings.llmTimeoutMs / 1000,
     sourceFetchTimeoutSec: settings.sourceFetchTimeoutMs / 1000,
+    chatEndpoint: OPENROUTER_CHAT_URL,
   };
 }
 
 async function chatCompletion(opts: {
-  baseUrl: string;
+  url: string;
   apiKey: string;
   model: string;
   systemPrompt: string;
@@ -70,11 +87,7 @@ async function chatCompletion(opts: {
   errorPrefix: string;
   timeoutMs: number;
 }): Promise<string> {
-  const url = opts.baseUrl.includes("/chat/completions")
-    ? opts.baseUrl
-    : `${opts.baseUrl}/v1/chat/completions`;
-
-  const response = await fetch(url, {
+  const response = await fetch(opts.url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${opts.apiKey}`,
@@ -136,7 +149,7 @@ async function callLlm(
       throw new Error("Missing DEEPSEEK_API_KEY environment variable.");
     }
     return chatCompletion({
-      baseUrl: deepSeekBaseUrl(),
+      url: resolveChatCompletionsUrl(deepSeekBaseUrl()),
       apiKey,
       model: deepSeekModel(),
       systemPrompt,
@@ -151,7 +164,7 @@ async function callLlm(
     throw new Error("Missing OPENROUTER_API_KEY environment variable.");
   }
   return chatCompletion({
-    baseUrl: "https://openrouter.ai/api/v1/chat/completions",
+    url: OPENROUTER_CHAT_URL,
     apiKey,
     model: openRouterModel(forOptimizer),
     systemPrompt,

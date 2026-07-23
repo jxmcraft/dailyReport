@@ -1,6 +1,15 @@
-# NewsAgent — Azure infrastructure (Bicep)
+# NewsAgent — Azure infrastructure (Bicep) — optional
 
-Provisions PostgreSQL, ACR, Key Vault, Container Apps Environment, **newsagent-web**, and **newsagent-scheduler**.
+**Optional IaC.** For day-to-day deploy (Portal / `az containerapp`), prefer [`docs/azure/DEPLOY.md`](../../docs/azure/DEPLOY.md).
+
+This folder provisions PostgreSQL, ACR, Key Vault, Container Apps Environment, and a single Container App **`newsagent-web`** (Next.js + cron scheduler via `scripts/docker-entrypoint.sh`).
+
+Probes (aligned with the app):
+
+| Probe | Path | Port |
+|-------|------|------|
+| Liveness | `/api/health/live` | 3000 |
+| Readiness | `/api/health` | 3000 |
 
 ## Prerequisites
 
@@ -37,7 +46,7 @@ Note outputs:
 az deployment group show -g rg-newsagent -n main --query properties.outputs
 ```
 
-Save `acrName`, `postgresFqdn`, `keyVaultName`, `webAppName`, `schedulerAppName`.
+Save `acrName`, `postgresFqdn`, `keyVaultName`, `webAppName`.
 
 ### Contributor without role-assignment permission
 
@@ -57,22 +66,26 @@ Then ask an **Owner** or **User Access Administrator** to grant:
 | Role | Scope | Principal |
 |------|--------|-----------|
 | **AcrPull** | Your ACR | Managed identity of `newsagent-web` |
-| **AcrPull** | Your ACR | Managed identity of `newsagent-scheduler` |
 | **Key Vault Secrets User** | Your Key Vault | Managed identity of `newsagent-web` |
-| **Key Vault Secrets User** | Your Key Vault | Managed identity of `newsagent-scheduler` |
 
-Get principal IDs:
+Get principal ID:
 
 ```powershell
 az containerapp show -n newsagent-web -g rg-newsagent --query identity.principalId -o tsv
-az containerapp show -n newsagent-scheduler -g rg-newsagent --query identity.principalId -o tsv
 ```
 
 **First deploy:** Container Apps may fail to pull images/secrets until those roles exist (1–3 minutes after assignment). If revisions are unhealthy, wait and run:
 
 ```bash
 az containerapp revision restart -n newsagent-web -g rg-newsagent
-az containerapp revision restart -n newsagent-scheduler -g rg-newsagent
+```
+
+### Orphan scheduler from a prior deploy
+
+If you previously deployed a separate `newsagent-scheduler` Container App, remove it after this template is applied:
+
+```bash
+az containerapp delete -n newsagent-scheduler -g rg-newsagent --yes
 ```
 
 ## 3. Add secrets to Key Vault
@@ -89,7 +102,9 @@ Bicep seeds `DATABASE-URL` automatically. Add remaining secrets in Azure Portal 
 | `AZURE-CLIENT-SECRET` | `AZURE_CLIENT_SECRET` | If `EMAIL_PROVIDER=graph` |
 | `SMTP-PASS` | `SMTP_PASS` | If SMTP email |
 
-After adding secrets, update each Container App to reference them (Portal → Container App → Secrets → Key Vault reference, then Environment variables → secret ref). Or extend `main.bicep` `keyVaultSecretNames` and redeploy.
+After adding secrets, update the Container App to reference them (Portal → Container App → Secrets → Key Vault reference, then Environment variables → secret ref). Or extend `main.bicep` `keyVaultSecretNames` and redeploy.
+
+The simpler CLI path in [`docs/azure/DEPLOY.md`](../../docs/azure/DEPLOY.md) uses **Container App secrets** instead of Key Vault.
 
 ## 4. Build and push image
 
@@ -125,7 +140,6 @@ Run **before** pointing production traffic at a new revision.
 IMAGE="$ACR_NAME.azurecr.io/newsagent:$TAG"
 
 az containerapp update -n newsagent-web -g rg-newsagent --image "$IMAGE"
-az containerapp update -n newsagent-scheduler -g rg-newsagent --image "$IMAGE"
 ```
 
 Set `APP_URL` to the web app FQDN (no trailing slash):
@@ -139,20 +153,22 @@ az containerapp update -n newsagent-web -g rg-newsagent \
 ## 7. Verify
 
 ```bash
+curl -sf "https://$FQDN/api/health/live"
 curl -sf "https://$FQDN/api/health"
-az containerapp logs show -n newsagent-scheduler -g rg-newsagent --tail 30
+az containerapp logs show -n newsagent-web -g rg-newsagent --tail 40
 ```
+
+Expect Next.js and scheduler startup lines in the same log stream.
 
 ## Secret / env mapping reference
 
-| Variable | Web | Scheduler |
-|----------|-----|-----------|
-| `DATABASE_URL` | KV `DATABASE-URL` | KV `DATABASE-URL` |
-| `APP_URL` | plain | — |
-| `TZ` | plain | plain |
-| `SCHEDULER_HEALTH_PORT` | — | `3001` |
-| `LLM_PROVIDER` + API keys | yes | yes |
-| `EMAIL_PROVIDER` + SMTP/Graph | yes | yes |
+| Variable | Source |
+|----------|--------|
+| `DATABASE_URL` | KV `DATABASE-URL` |
+| `APP_URL` | plain |
+| `TZ` | plain |
+| `LLM_PROVIDER` + API keys | yes |
+| `EMAIL_PROVIDER` + SMTP/Graph | yes |
 
 ## Postgres firewall for local migrate
 
@@ -180,4 +196,4 @@ infra/azure/
     containerApp.bicep
 ```
 
-See also [`docs/azure/DEPLOY.md`](../../docs/azure/DEPLOY.md) for the full release runbook.
+See [`docs/azure/DEPLOY.md`](../../docs/azure/DEPLOY.md) for the primary Container Apps runbook.

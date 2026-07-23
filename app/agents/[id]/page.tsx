@@ -68,6 +68,12 @@ export default async function AgentDetailPage({
             systemPrompt: agent.systemPrompt,
             relevanceMinScore: agent.relevanceMinScore,
             minRankedSources: agent.minRankedSources,
+            maxRankedSources: agent.maxRankedSources,
+            shallowScrapeMaxLinks: agent.shallowScrapeMaxLinks,
+            enableNewsApi: agent.enableNewsApi,
+            enableReddit: agent.enableReddit,
+            enableHackerNews: agent.enableHackerNews,
+            enableGoogleSearch: agent.enableGoogleSearch,
             keywordMatchMode: agent.keywordMatchMode,
             dataSources: agent.dataSources,
           }}

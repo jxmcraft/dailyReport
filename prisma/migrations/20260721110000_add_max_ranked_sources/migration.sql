@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Agent" ADD COLUMN "maxRankedSources" INTEGER NOT NULL DEFAULT 12;

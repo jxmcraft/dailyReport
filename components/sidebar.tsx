@@ -12,7 +12,7 @@ import {
 
 import { cn } from "@/lib/utils";
 
-const NAV = [
+export const NAV = [
   {
     label: "Overview",
     items: [

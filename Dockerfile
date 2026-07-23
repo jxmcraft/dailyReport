@@ -27,5 +27,7 @@ COPY --from=builder /app/lib ./lib
 COPY --from=builder /app/types ./types
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 
+RUN chmod +x ./scripts/docker-entrypoint.sh
+
 EXPOSE 3000
-CMD ["npm", "run", "start"]
+CMD ["./scripts/docker-entrypoint.sh"]

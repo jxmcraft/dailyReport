@@ -1,0 +1,7 @@
+-- AlterTable
+ALTER TABLE "Agent"
+ADD COLUMN "shallowScrapeMaxLinks" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "enableNewsApi" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN "enableReddit" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN "enableHackerNews" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN "enableGoogleSearch" BOOLEAN NOT NULL DEFAULT true;

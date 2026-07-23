@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { Agent } from "@prisma/client";
 
+import { MAX_SHALLOW_SCRAPE_LINKS } from "@/lib/constants";
 import {
   buildDeliveryChannelData,
   hasDeliveryConfig,
@@ -13,6 +14,7 @@ import { recoverStaleRunningAgents } from "@/lib/agent-recovery";
 import { executeAgentPipeline } from "@/lib/pipeline";
 import { prisma } from "@/lib/prisma";
 import { optimizeSystemPrompt } from "@/lib/prompt-optimizer";
+import { clampRankedSourceLimits } from "@/lib/ranked-sources";
 import {
   isMicrosoftGraphConfigured,
   searchDirectory,
@@ -56,15 +58,21 @@ function revalidateAgent(agentId: string, includeIntegrations = false) {
   if (includeIntegrations) revalidatePath("/integrations");
 }
 
+function clampShallowScrapeMaxLinks(value: number): number {
+  return Math.min(MAX_SHALLOW_SCRAPE_LINKS, Math.max(0, Math.round(value)));
+}
+
 export async function updateRelevanceSettings(
   agentId: string,
   relevanceMinScore: number,
   keywordMatchMode: string,
-  minRankedSources: number
+  minRankedSources: number,
+  maxRankedSources: number
 ) {
   const score = Math.min(10, Math.max(1, Math.round(relevanceMinScore)));
   const mode = keywordMatchMode === "AND" ? "AND" : "OR";
-  const minSources = Math.min(12, Math.max(1, Math.round(minRankedSources)));
+  const { minRankedSources: minSources, maxRankedSources: maxSources } =
+    clampRankedSourceLimits(minRankedSources, maxRankedSources);
 
   await prisma.agent.update({
     where: { id: agentId },
@@ -72,6 +80,7 @@ export async function updateRelevanceSettings(
       relevanceMinScore: score,
       keywordMatchMode: mode,
       minRankedSources: minSources,
+      maxRankedSources: maxSources,
     },
   });
   revalidateAgent(agentId);
@@ -262,6 +271,43 @@ export async function updateScrapeUrls(
   return normalized;
 }
 
+export async function updateShallowScrapeSettings(
+  agentId: string,
+  shallowScrapeMaxLinks: number
+) {
+  const agent = await requireAgent(agentId);
+  if (agent.status === "RUNNING") {
+    throw new Error("Cannot edit scrape settings while a pipeline run is in progress.");
+  }
+
+  await prisma.agent.update({
+    where: { id: agentId },
+    data: { shallowScrapeMaxLinks: clampShallowScrapeMaxLinks(shallowScrapeMaxLinks) },
+  });
+  revalidateAgent(agentId);
+}
+
+export async function updateBuiltInProviders(
+  agentId: string,
+  settings: {
+    enableNewsApi: boolean;
+    enableReddit: boolean;
+    enableHackerNews: boolean;
+    enableGoogleSearch: boolean;
+  }
+) {
+  const agent = await requireAgent(agentId);
+  if (agent.status === "RUNNING") {
+    throw new Error("Cannot edit provider settings while a pipeline run is in progress.");
+  }
+
+  await prisma.agent.update({
+    where: { id: agentId },
+    data: settings,
+  });
+  revalidateAgent(agentId);
+}
+
 export async function clearAgentReports(agentId: string) {
   const agent = await requireAgent(agentId);
   if (agent.status === "RUNNING") {
@@ -327,7 +373,12 @@ export async function triggerPipeline(agentId: string) {
 
   revalidateAgent(agentId);
   revalidatePath("/");
-  return { ok: true as const };
+  return {
+    ok: true as const,
+    reportId: result.reportId,
+    reportStatus: result.reportStatus,
+    deliveryFailed: result.deliveryFailed,
+  };
 }
 
 export async function sendReportEmail(reportId: string) {

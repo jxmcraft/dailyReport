@@ -1,12 +1,21 @@
 import { DailyReportsList } from "@/components/daily-reports-list";
+import { PaginationControls } from "@/components/pagination-controls";
 import { EmptyState, PageHeader, PageShell } from "@/components/page-shell";
-import { getDailyReportGroups } from "@/lib/agents";
+import { getDailyReportGroupsPage } from "@/lib/agents";
 import { pluralize } from "@/lib/pluralize";
 
 export const dynamic = "force-dynamic";
 
-export default async function DailyReportsPage() {
-  const groups = await getDailyReportGroups();
+export default async function DailyReportsPage({
+  searchParams,
+}: {
+  searchParams?: { cursor?: string; direction?: "older" | "newer" };
+}) {
+  const page = await getDailyReportGroupsPage({
+    cursor: searchParams?.cursor,
+    direction: searchParams?.direction,
+  });
+  const groups = page.groups;
   const totalReports = groups.reduce((n, g) => n + g.runs.length, 0);
 
   return (
@@ -26,7 +35,14 @@ export default async function DailyReportsPage() {
           day.
         </EmptyState>
       ) : (
-        <DailyReportsList groups={groups} />
+        <div className="space-y-6">
+          <DailyReportsList groups={groups} />
+          <PaginationControls
+            basePath="/reports"
+            olderCursor={page.olderCursor}
+            newerCursor={page.newerCursor}
+          />
+        </div>
       )}
     </PageShell>
   );

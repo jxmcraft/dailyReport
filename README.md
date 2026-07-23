@@ -54,6 +54,14 @@ The Integrations page is **read-only**: it shows which `.env` keys are configure
 
 LLM timeout, source fetch timeout, and poll interval are editable on the Settings page (stored in the database, not `.env`).
 
+### Agent relevance
+
+On each agent’s **Relevance** panel you can set:
+
+- **Max sources in report** — how many ranked articles enter the LLM (default 12, up to 50).
+- **Minimum ranked sources** — abort the run if fewer pass filtering (cannot exceed max).
+- Relevance score threshold and OR/AND keyword matching.
+
 ## Scripts
 
 | Script | Purpose | Run |
@@ -74,6 +82,7 @@ Use `.env.example` as the checklist. Summary:
 | `LLM_PROVIDER` | Yes | `openrouter` (default) or `deepseek` |
 | `OPENROUTER_API_KEY` | If using OpenRouter | |
 | `DEEPSEEK_API_KEY` | If using DeepSeek | Set `LLM_PROVIDER=deepseek` |
+| `DEEPSEEK_BASE_URL` | Optional | API root, `/v1` root, or full `.../chat/completions` URL (see `.env.example`) |
 | `APP_URL` | Yes in production | Public base URL for email approval links (no trailing slash) |
 | `TZ` | Recommended for scheduler | IANA timezone, e.g. `America/New_York` — cron matches process local time |
 | Source API keys | Optional | Enable more built-in providers (News, Google, etc.) |
@@ -86,7 +95,7 @@ Timeouts (LLM, source fetch, poll interval) are configured on the **Settings** p
 
 **Security:** There is no authentication on the web UI or API routes. Treat the deployment as private until you add access control.
 
-**Azure / container deploy:** See [`docs/azure/DEPLOY.md`](docs/azure/DEPLOY.md) and [`infra/azure/README.md`](infra/azure/README.md). Provision with Bicep, run `npm run db:migrate:deploy` before each release, then update web + scheduler Container Apps. Microsoft Graph: [`docs/azure/MICROSOFT_GRAPH.md`](docs/azure/MICROSOFT_GRAPH.md).
+**Azure / container deploy:** See [`docs/azure/DEPLOY.md`](docs/azure/DEPLOY.md) (Portal/`az` Container Apps). Optional IaC: [`infra/azure/README.md`](infra/azure/README.md). Run `npm run db:migrate:deploy` before each release; one Container App (`newsagent-web`) runs web + scheduler. Microsoft Graph: [`docs/azure/MICROSOFT_GRAPH.md`](docs/azure/MICROSOFT_GRAPH.md).
 
 ## Tests and quality
 

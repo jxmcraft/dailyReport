@@ -4,6 +4,10 @@ import { redirect } from "next/navigation";
 
 import { buildCronFromFrequency } from "@/lib/cron";
 import {
+  DEFAULT_MAX_RANKED_SOURCES,
+  DEFAULT_MIN_RANKED_SOURCES,
+} from "@/lib/constants";
+import {
   buildDeliveryChannelData,
   hasDeliveryConfig,
   parseDeliveryTarget,
@@ -48,6 +52,10 @@ export async function createAgent(formData: FormData) {
   const approversRaw = get("approvers");
   const requireEmailApproval = get("requireEmailApproval") !== "false";
   const autoSendEmail = get("autoSendEmail") !== "false";
+  const enableNewsApi = formData.get("enableNewsApi") === "true";
+  const enableReddit = formData.get("enableReddit") === "true";
+  const enableHackerNews = formData.get("enableHackerNews") === "true";
+  const enableGoogleSearch = formData.get("enableGoogleSearch") === "true";
   const systemPrompt =
     get("systemPrompt") ||
     `Summarize the latest updates about ${topicKeywords.join(", ") || name} in Markdown with sections and bullet points.`;
@@ -62,7 +70,13 @@ export async function createAgent(formData: FormData) {
       ),
       systemPrompt,
       relevanceMinScore: 3,
-      minRankedSources: 3,
+      minRankedSources: DEFAULT_MIN_RANKED_SOURCES,
+      maxRankedSources: DEFAULT_MAX_RANKED_SOURCES,
+      shallowScrapeMaxLinks: 0,
+      enableNewsApi,
+      enableReddit,
+      enableHackerNews,
+      enableGoogleSearch,
       keywordMatchMode: "OR",
       status: "ACTIVE",
       dataSources: {

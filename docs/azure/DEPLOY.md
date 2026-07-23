@@ -1,91 +1,75 @@
-# Deploy NewsAgent on Azure
+# Deploy NewsAgent on Azure Container Apps
 
-NewsAgent needs **two long-running processes** plus **PostgreSQL**:
+**Recommended path:** create resources with the Azure Portal or `az` CLI (this page).
 
-| Process | Command | Notes |
+**Optional:** provision the same stack with Bicep — see [`infra/azure/README.md`](../../infra/azure/README.md).
+
+NewsAgent runs as **one Container App** (Next.js + cron scheduler) plus **PostgreSQL**:
+
+| Piece | How it runs | Notes |
 | --- | --- | --- |
-| Web | `npm run start` | Next.js dashboard + API; health at `/api/health` |
-| Scheduler | `npm run scheduler:prod` | Cron matcher; health at `:3001/health`; **min 1 / max 1 replica** |
+| Web + scheduler | Image default `CMD` → `scripts/docker-entrypoint.sh` | Starts `npm run scheduler:prod` and `npm run start` together |
 | Database | PostgreSQL | Prisma via `DATABASE_URL`; use **migrations** in production |
 
-## Infrastructure (Bicep)
+Scale **minReplicas: 1 / maxReplicas: 1** so only one scheduler process runs. `SchedulerFire` still dedupes if replicas are raised later.
 
-Provision Azure resources with Bicep — see [`infra/azure/README.md`](../../infra/azure/README.md).
+### Health probes
 
-Resources created:
+| Probe | Path | Purpose |
+| --- | --- | --- |
+| Liveness | `/api/health/live` | Process up (no DB) — do not restart on DB blips |
+| Readiness | `/api/health` | Postgres reachable |
 
-1. **Azure Database for PostgreSQL – Flexible Server** (v16)
-2. **Azure Container Registry**
-3. **Log Analytics** + **Container Apps Environment**
-4. **Key Vault** (`DATABASE-URL` seeded at deploy)
-5. **Container App `newsagent-web`** — external ingress, liveness/readiness on `/api/health`
-6. **Container App `newsagent-scheduler`** — no ingress; command `npm run scheduler:prod`; liveness on `/health:3001`
+Both use port **3000**.
 
-Validate templates locally:
+## Prerequisites
 
-```bash
-az bicep build --file infra/azure/main.bicep
-```
+- Azure CLI (`az`) and Docker
+- A resource group (created below if needed)
 
-## Manual release runbook
-
-Run in order for each production release:
-
-### 1. Provision or update infrastructure
-
-**PowerShell (recommended on Windows):**
-
-```powershell
-az group create -n rg-newsagent -l eastus
-
-# Option A: env var (matches infra/azure/main.bicepparam)
-$env:POSTGRES_ADMIN_PASSWORD = 'YOUR_STRONG_PASSWORD'
-az deployment group create `
-  -g rg-newsagent `
-  -f infra/azure/main.bicep `
-  -p infra/azure/main.bicepparam
-
-# Option B: pass password on CLI
-az deployment group create `
-  -g rg-newsagent `
-  -f infra/azure/main.bicep `
-  -p infra/azure/main.bicepparam `
-  -p postgresAdminPassword='YOUR_STRONG_PASSWORD'
-
-# Contributor only (no roleAssignments/write) — admin must assign AcrPull + Key Vault Secrets User manually
-az deployment group create `
-  -g rg-newsagent `
-  -f infra/azure/main.bicep `
-  -p infra/azure/main.bicepparam `
-  -p assignManagedIdentityRoles=false `
-  -p postgresAdminPassword='YOUR_STRONG_PASSWORD'
-```
-
-**Bash:**
+## 1. Resource group + Container Apps Environment
 
 ```bash
 az group create -n rg-newsagent -l eastus
-export POSTGRES_ADMIN_PASSWORD='YOUR_STRONG_PASSWORD'
-az deployment group create \
-  -g rg-newsagent \
-  -f infra/azure/main.bicep \
-  -p infra/azure/main.bicepparam
+
+az monitor log-analytics workspace create \
+  -g rg-newsagent -n newsagent-logs -l eastus
+
+LOG_ID=$(az monitor log-analytics workspace show \
+  -g rg-newsagent -n newsagent-logs --query customerId -o tsv)
+LOG_KEY=$(az monitor log-analytics workspace get-shared-keys \
+  -g rg-newsagent -n newsagent-logs --query primarySharedKey -o tsv)
+
+az containerapp env create \
+  -g rg-newsagent -n newsagent-cae -l eastus \
+  --logs-workspace-id "$LOG_ID" \
+  --logs-workspace-key "$LOG_KEY"
 ```
 
-### 2. Build and push image
+Or create a **Container Apps Environment** in the Portal (it can create Log Analytics for you).
+
+## 2. Azure Container Registry
 
 ```bash
-az acr login -n <acrName>
-docker build -t <acrName>.azurecr.io/newsagent:<tag> .
-docker push <acrName>.azurecr.io/newsagent:<tag>
+# Name must be alphanumeric only
+az acr create -g rg-newsagent -n newsagentacr$RANDOM --sku Basic
+ACR_NAME=$(az acr list -g rg-newsagent --query "[0].name" -o tsv)
+
+az acr login -n "$ACR_NAME"
+TAG=$(git rev-parse --short HEAD)
+IMAGE="$ACR_NAME.azurecr.io/newsagent:$TAG"
+docker build -t "$IMAGE" .
+docker push "$IMAGE"
 ```
 
-### 3. Apply database migrations (once per schema change)
+Enable admin credentials **or** attach a managed identity with AcrPull when creating the Container App (Portal: Registry → Admin user, or identity-based pull).
 
-Run **before** updating Container App revisions (not in the web container `CMD`):
+## 3. PostgreSQL
+
+Create **Azure Database for PostgreSQL – Flexible Server** (Portal or CLI), database `newsagent`, and allow your IP (for migrations) plus the Container Apps environment outbound access as needed.
 
 ```bash
-DATABASE_URL='postgresql://...@<server>.postgres.database.azure.com:5432/newsagent?sslmode=require' \
+DATABASE_URL='postgresql://USER:PASSWORD@SERVER.postgres.database.azure.com:5432/newsagent?sslmode=require' \
   npm run db:migrate:deploy
 ```
 
@@ -95,23 +79,132 @@ DATABASE_URL='postgresql://...@<server>.postgres.database.azure.com:5432/newsage
 | Existing dev `db push` DB (disposable) | `npx prisma migrate reset` or drop DB, then `migrate deploy` |
 | Existing `db push` DB (keep data) | `npx prisma migrate resolve --applied 20260629120000_init` then `migrate deploy` for future migrations |
 
-**Production rule:** never use `prisma db push`.
+**Production rule:** never use `prisma db push`. Run migrations **before** pointing traffic at a new revision.
 
-### 4. Update Container Apps
+## 4. Create the Container App
 
-```bash
-az containerapp update -n newsagent-web -g rg-newsagent --image <acrName>.azurecr.io/newsagent:<tag>
-az containerapp update -n newsagent-scheduler -g rg-newsagent --image <acrName>.azurecr.io/newsagent:<tag>
-```
-
-Set `APP_URL` to the public HTTPS URL (no trailing slash) before sending approval emails.
-
-### 5. Verify
+Do **not** override the container command — the image entrypoint runs web + scheduler.
 
 ```bash
-curl -sf https://<web-fqdn>/api/health
-az containerapp logs show -n newsagent-scheduler -g rg-newsagent --tail 20
+# Use ACR admin for a simple first deploy (or configure managed identity + AcrPull)
+ACR_USER=$(az acr credential show -n "$ACR_NAME" --query username -o tsv)
+ACR_PASS=$(az acr credential show -n "$ACR_NAME" --query "passwords[0].value" -o tsv)
+
+az containerapp create \
+  -g rg-newsagent -n newsagent-web \
+  --environment newsagent-cae \
+  --image "$IMAGE" \
+  --registry-server "$ACR_NAME.azurecr.io" \
+  --registry-username "$ACR_USER" \
+  --registry-password "$ACR_PASS" \
+  --target-port 3000 \
+  --ingress external \
+  --min-replicas 1 \
+  --max-replicas 1 \
+  --cpu 0.5 --memory 1.0Gi \
+  --secrets "database-url=$DATABASE_URL" \
+  --env-vars \
+    "NODE_ENV=production" \
+    "PORT=3000" \
+    "APP_URL=https://placeholder.example.com" \
+    "TZ=UTC" \
+    "LLM_PROVIDER=openrouter" \
+    "DATABASE_URL=secretref:database-url"
 ```
+
+Add more secrets the same way (`openrouter-api-key=...` → `OPENROUTER_API_KEY=secretref:openrouter-api-key`). Prefer **Container App secrets** over Key Vault for this simple path.
+
+### Probes (Portal or YAML)
+
+After create, set probes (Portal → Container → Health probes), or update via revision:
+
+- **Liveness:** HTTP GET `/api/health/live` port 3000
+- **Readiness:** HTTP GET `/api/health` port 3000
+
+### Set public `APP_URL`
+
+```bash
+FQDN=$(az containerapp show -n newsagent-web -g rg-newsagent \
+  --query properties.configuration.ingress.fqdn -o tsv)
+az containerapp update -n newsagent-web -g rg-newsagent \
+  --set-env-vars "APP_URL=https://$FQDN"
+```
+
+### Orphan scheduler from a prior two-app deploy
+
+```bash
+az containerapp delete -n newsagent-scheduler -g rg-newsagent --yes
+```
+
+## 5. Update on each release
+
+```bash
+az acr login -n "$ACR_NAME"
+TAG=$(git rev-parse --short HEAD)
+IMAGE="$ACR_NAME.azurecr.io/newsagent:$TAG"
+docker build -t "$IMAGE" .
+docker push "$IMAGE"
+
+# Migrate first when schema changed
+# DATABASE_URL='...' npm run db:migrate:deploy
+
+az containerapp update -n newsagent-web -g rg-newsagent --image "$IMAGE"
+```
+
+## 6. Verify
+
+```bash
+curl -sf "https://$FQDN/api/health/live"
+curl -sf "https://$FQDN/api/health"
+az containerapp logs show -n newsagent-web -g rg-newsagent --tail 40
+```
+
+Expect Next.js and scheduler startup lines in the same log stream.
+
+## Environment variables
+
+See [`.env.example`](../../.env.example). On Azure Container Apps:
+
+| Kind | Examples |
+| --- | --- |
+| **Secrets** | `DATABASE_URL`, API keys (`OPENROUTER_API_KEY`, `SMTP_PASS`, `EMAIL_APPROVAL_SECRET`, `API_SECRET`, …) |
+| **Plain env** | `APP_URL`, `TZ`, `PORT`, `NODE_ENV`, `LLM_PROVIDER`, `EMAIL_PROVIDER` |
+
+For Microsoft Graph email/directory, see [MICROSOFT_GRAPH.md](./MICROSOFT_GRAPH.md).
+
+## Security
+
+The dashboard has **no built-in login**. Before exposing a public URL:
+
+- Restrict network access (private environment, VPN, IP allow list), **or**
+- Add Entra ID authentication (planned separately).
+
+Set `API_SECRET` for automation routes (`POST /api/pipeline/[agentId]/run`).
+
+## Scheduler locking
+
+- **DB cron dedupe:** `SchedulerFire` prevents double-fires across replicas.
+- **Pipeline claim:** only one run per agent (`ACTIVE` → `RUNNING`).
+- **ACA scale:** keep `maxReplicas: 1` on `newsagent-web`.
+
+## Local smoke test
+
+```bash
+docker compose -f docker-compose.azure-prep.yml up --build -d
+docker compose -f docker-compose.azure-prep.yml run --rm web npx prisma migrate deploy
+curl -sf http://localhost:3000/api/health/live
+curl -sf http://localhost:3000/api/health
+```
+
+Open http://localhost:3000 — the compose `web` service uses the image entrypoint (web + scheduler).
+
+## Optional: provision with Bicep
+
+If you prefer IaC (Postgres + ACR + Key Vault + Container App in one deployment), use [`infra/azure/README.md`](../../infra/azure/README.md). Day-to-day image updates still use `az containerapp update` as above.
+
+## CI
+
+GitHub Actions runs `tsc`, `lint`, `test:unit`, and `docker build` on pull requests and pushes to `main`. Deploy steps are manual (this runbook).
 
 ## Docker image
 
@@ -119,52 +212,4 @@ az containerapp logs show -n newsagent-scheduler -g rg-newsagent --tail 20
 docker build -t newsagent:latest .
 ```
 
-- **Web** container command: default (`npm run start`)
-- **Scheduler** container command: `npm run scheduler:prod` (env from Key Vault / Container App — no `.env` file in image)
-
-## Required environment variables
-
-See [`.env.example`](../../.env.example). Minimum for production:
-
-| Variable | Purpose |
-| --- | --- |
-| `DATABASE_URL` | PostgreSQL (`?sslmode=require` on Azure) |
-| `APP_URL` | Public HTTPS base URL for approval links |
-| `LLM_PROVIDER` + API key | Report synthesis |
-| `EMAIL_APPROVAL_SECRET` | If using email approval |
-| `TZ` | Scheduler timezone (IANA, e.g. `America/New_York`) |
-| `SCHEDULER_HEALTH_PORT` | Scheduler probe port (default `3001`) |
-
-For Microsoft Graph email/directory, see [MICROSOFT_GRAPH.md](./MICROSOFT_GRAPH.md).
-
-Store secrets in **Key Vault**; reference from Container Apps. See [`infra/azure/README.md`](../../infra/azure/README.md) for the secret name table.
-
-## Security
-
-The dashboard has **no built-in login**. Before exposing a public URL:
-
-- Restrict network access (private Container Apps environment, VPN, IP allow list), **or**
-- Add Entra ID authentication (planned separately).
-
-Set `API_SECRET` for automation routes (`POST /api/pipeline/[agentId]/run`).
-
-## Scheduler locking
-
-- **DB cron dedupe:** `SchedulerFire` table prevents double-fires across scheduler replicas.
-- **Pipeline claim:** only one run per agent (`ACTIVE` → `RUNNING` via atomic update).
-- **ACA scale:** scheduler `maxReplicas: 1` in Bicep.
-
-## Local smoke test
-
-```bash
-docker compose -f docker-compose.azure-prep.yml up --build -d
-docker compose -f docker-compose.azure-prep.yml run --rm web npx prisma migrate deploy
-curl -sf http://localhost:3000/api/health
-curl -sf http://localhost:3001/health
-```
-
-Open http://localhost:3000
-
-## CI
-
-GitHub Actions runs `tsc`, `lint`, `test:unit`, and `docker build` on pull requests and pushes to `main`. Deploy steps are manual (see runbook above).
+Default `CMD` is `./scripts/docker-entrypoint.sh` (scheduler + Next.js). No `.env` file in the image — configure env/secrets on the Container App.

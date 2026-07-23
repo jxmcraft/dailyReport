@@ -2,7 +2,11 @@
 // the ranking layer and the LLM see one consistent shape regardless of origin.
 
 import { envSecret } from "@/lib/env";
-import { SOURCE_FETCH_TIMEOUT_MS } from "@/lib/constants";
+import {
+  DEFAULT_SHALLOW_SCRAPE_MAX_LINKS,
+  MAX_SHALLOW_SCRAPE_LINKS,
+  SOURCE_FETCH_TIMEOUT_MS,
+} from "@/lib/constants";
 import { buildNewsSearchQuery } from "@/lib/ranking";
 import {
   DEFAULT_MAX_NEWS_AGE_DAYS,
@@ -10,6 +14,7 @@ import {
   newsFromIso,
   newsFromUnixSeconds,
 } from "@/lib/recency";
+import { assertUrlIsSafeForScrape } from "@/lib/url-safety";
 
 export interface RankedDocument {
   title: string;
@@ -43,12 +48,21 @@ export type ProviderType =
   | "GOOGLE_SEARCH"
   | "REDDIT"
   | "HACKER_NEWS"
-  | "WEB";
+  | "WEB"
+  | "WEB_SHALLOW";
+
+export interface BuiltInProviderSettings {
+  enableNewsApi: boolean;
+  enableReddit: boolean;
+  enableHackerNews: boolean;
+  enableGoogleSearch: boolean;
+}
 
 export interface ProviderSpec {
   id: string;
   sourceType: ProviderType;
   endpoint: string;
+  shallowMaxLinks?: number;
 }
 
 const MAX_ITEMS_PER_SOURCE = 15;
@@ -142,6 +156,10 @@ export function htmlToText(html: string): string {
   return decodeEntities(stripped).replace(/\s+/g, " ").trim();
 }
 
+function normalizeUrlForCompare(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
 export function extractTitle(html: string): string {
   const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   return m ? decodeEntities(m[1]).replace(/\s+/g, " ").trim() : "";
@@ -158,12 +176,86 @@ function clip(s: unknown, n: number): string {
   return String(s ?? "").slice(0, n);
 }
 
+function defaultHtmlHeaders(): Record<string, string> {
+  return {
+    "User-Agent": "Mozilla/5.0 (compatible; NewsAgent/1.0; +https://localhost)",
+    Accept: "text/html,application/xhtml+xml",
+  };
+}
+
+function extractChildLinks(listingUrl: string, html: string, maxLinks: number): string[] {
+  const base = assertUrlIsSafeForScrape(listingUrl);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const matches = Array.from(html.matchAll(/<a[^>]+href=["']([^"'#]+)["']/gi));
+  for (const match of matches) {
+    const href = match[1]?.trim();
+    if (!href) continue;
+    let child: URL;
+    try {
+      child = new URL(href, base);
+    } catch {
+      continue;
+    }
+    if (child.protocol !== "http:" && child.protocol !== "https:") continue;
+    if (child.host !== base.host) continue;
+    const normalized = normalizeUrlForCompare(child.toString());
+    if (normalized === normalizeUrlForCompare(base.toString())) continue;
+    if (seen.has(normalized)) continue;
+    try {
+      assertUrlIsSafeForScrape(normalized);
+    } catch {
+      continue;
+    }
+    seen.add(normalized);
+    out.push(normalized);
+    if (out.length >= maxLinks) break;
+  }
+  return out;
+}
+
+async function fetchHtmlDocument(
+  url: string,
+  fetchTimeoutMs: number
+): Promise<{ bodyText: string; httpStatus: number; contentType: string }> {
+  assertUrlIsSafeForScrape(url);
+  const response = await fetchWithRetry(url, {
+    headers: defaultHtmlHeaders(),
+    signal: AbortSignal.timeout(fetchTimeoutMs),
+  });
+  const httpStatus = response.status;
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  if (!response.ok) {
+    throw new Error(`HTTP ${httpStatus}`);
+  }
+  const bodyText = await response.text();
+  if (!contentType.includes("text/html")) {
+    throw new Error(`Not an HTML page (${contentType || "unknown"})`);
+  }
+  return { bodyText, httpStatus, contentType };
+}
+
+function documentFromHtml(url: string, html: string): RankedDocument | null {
+  const text = htmlToText(html);
+  if (text.length < 200) return null;
+  const title = extractTitle(html) || safeHost(url);
+  const desc = extractMetaDescription(html);
+  return {
+    title,
+    url,
+    text: `${title} ${desc} ${text}`.slice(0, WEB_TEXT_LIMIT).trim(),
+    source: `Web (${safeHost(url)})`,
+    publishedAt: null,
+  };
+}
+
 // --- Provider construction ---------------------------------------------------
 
 // Built-in sources run automatically from the agent's keywords. No per-agent API
 // configuration is needed; keys come from the environment.
 export function buildDefaultProviders(
   keywords: string[],
+  enabled: BuiltInProviderSettings,
   maxAgeDays: number = DEFAULT_MAX_NEWS_AGE_DAYS
 ): ProviderSpec[] {
   const q = buildNewsSearchQuery(keywords);
@@ -172,7 +264,7 @@ export function buildDefaultProviders(
   const fromUnix = newsFromUnixSeconds(maxAgeDays);
   const specs: ProviderSpec[] = [];
 
-  if (envSecret("NEWS_API_KEY")) {
+  if (enabled.enableNewsApi && envSecret("NEWS_API_KEY")) {
     specs.push({
       id: "builtin-newsapi",
       sourceType: "NEWS_API",
@@ -219,18 +311,22 @@ export function buildDefaultProviders(
       endpoint: `https://api.mediastack.com/v1/news?keywords=${enc(q)}&languages=en&limit=20`,
     });
   }
-  specs.push({
-    id: "builtin-reddit",
-    sourceType: "REDDIT",
-    endpoint: `https://www.reddit.com/search.json?q=${enc(q)}&sort=new&t=week&limit=15`,
-  });
-  specs.push({
-    id: "builtin-hackernews",
-    sourceType: "HACKER_NEWS",
-    endpoint: `https://hn.algolia.com/api/v1/search?query=${enc(q)}&tags=story&hitsPerPage=20&numericFilters=created_at_i>${fromUnix}`,
-  });
+  if (enabled.enableReddit) {
+    specs.push({
+      id: "builtin-reddit",
+      sourceType: "REDDIT",
+      endpoint: `https://www.reddit.com/search.json?q=${enc(q)}&sort=new&t=week&limit=15`,
+    });
+  }
+  if (enabled.enableHackerNews) {
+    specs.push({
+      id: "builtin-hackernews",
+      sourceType: "HACKER_NEWS",
+      endpoint: `https://hn.algolia.com/api/v1/search?query=${enc(q)}&tags=story&hitsPerPage=20&numericFilters=created_at_i>${fromUnix}`,
+    });
+  }
   const googleCx = envSecret("GOOGLE_SEARCH_CX");
-  if (googleCx && envSecret("GOOGLE_SEARCH_API_KEY")) {
+  if (enabled.enableGoogleSearch && googleCx && envSecret("GOOGLE_SEARCH_API_KEY")) {
     const cx = googleCx;
     specs.push({
       id: "builtin-google",
@@ -244,6 +340,14 @@ export function buildDefaultProviders(
 // A user-added source is just a webpage URL. Reddit links use the JSON API;
 // everything else is scraped as generic HTML.
 export function buildWebProvider(url: string, id: string): ProviderSpec {
+  return buildWebProviderWithExpansion(url, id, 0);
+}
+
+export function buildWebProviderWithExpansion(
+  url: string,
+  id: string,
+  shallowMaxLinks: number = 0
+): ProviderSpec {
   if (safeHost(url).includes("reddit.com")) {
     return {
       id,
@@ -251,7 +355,16 @@ export function buildWebProvider(url: string, id: string): ProviderSpec {
       endpoint: normalizeRedditJsonUrl(url),
     };
   }
-  return { id, sourceType: "WEB", endpoint: url };
+  const cappedLinks = Math.min(
+    MAX_SHALLOW_SCRAPE_LINKS,
+    Math.max(0, Math.round(shallowMaxLinks || 0))
+  );
+  return {
+    id,
+    sourceType: cappedLinks > 0 ? "WEB_SHALLOW" : "WEB",
+    endpoint: url,
+    shallowMaxLinks: cappedLinks || undefined,
+  };
 }
 
 // --- Request building + parsing ----------------------------------------------
@@ -328,13 +441,10 @@ function buildRequest(spec: ProviderSpec): {
     case "HACKER_NEWS":
       return { url: spec.endpoint, headers: {}, expectHtml: false };
     case "WEB":
+    case "WEB_SHALLOW":
       return {
         url: spec.endpoint,
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (compatible; NewsAgent/1.0; +https://localhost)",
-          Accept: "text/html,application/xhtml+xml",
-        },
+        headers: defaultHtmlHeaders(),
         expectHtml: true,
       };
   }
@@ -571,6 +681,7 @@ function parsePayload(spec: ProviderSpec, data: unknown): RankedDocument[] {
       }));
     }
     case "WEB":
+    case "WEB_SHALLOW":
       return [];
   }
   return [];
@@ -619,31 +730,50 @@ export async function ingestProvider(
     const bodyText = await response.text();
 
     if (expectHtml) {
+      assertUrlIsSafeForScrape(spec.endpoint);
       if (!contentType.includes("text/html")) {
         return fail(`Not an HTML page (${contentType || "unknown"})`, {
           httpStatus,
           contentType,
         });
       }
-      const text = htmlToText(bodyText);
-      if (text.length < 200) {
+      const listingDoc = documentFromHtml(spec.endpoint, bodyText);
+      if (!listingDoc) {
         return fail("Too little readable text (page may be JS-heavy)", {
           httpStatus,
           contentType,
         });
       }
-      const title = extractTitle(bodyText) || safeHost(spec.endpoint);
-      const desc = extractMetaDescription(bodyText);
-      const doc: RankedDocument = {
-        title,
-        url: spec.endpoint,
-        text: `${title} ${desc} ${text}`.slice(0, WEB_TEXT_LIMIT).trim(),
-        source: `Web (${safeHost(spec.endpoint)})`,
-        publishedAt: null,
-      };
+      let docs: RankedDocument[] = [listingDoc];
+      if (spec.sourceType === "WEB_SHALLOW") {
+        const childLinks = extractChildLinks(
+          spec.endpoint,
+          bodyText,
+          spec.shallowMaxLinks ?? DEFAULT_SHALLOW_SCRAPE_MAX_LINKS
+        );
+        const childDocs: RankedDocument[] = [];
+        for (const childUrl of childLinks) {
+          try {
+            const child = await fetchHtmlDocument(childUrl, fetchTimeoutMs);
+            const childDoc = documentFromHtml(childUrl, child.bodyText);
+            if (childDoc) childDocs.push(childDoc);
+          } catch {
+            // Ignore bad child links; the main listing page still counts as evidence.
+          }
+        }
+        if (childDocs.length > 0) {
+          docs = childDocs;
+        }
+      }
       return {
-        docs: [doc],
-        diagnostic: { ...base, status: "ok", httpStatus, contentType, itemsIngested: 1 },
+        docs,
+        diagnostic: {
+          ...base,
+          status: "ok",
+          httpStatus,
+          contentType,
+          itemsIngested: docs.length,
+        },
       };
     }
 

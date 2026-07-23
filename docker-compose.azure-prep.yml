@@ -1,9 +1,8 @@
-# Local production-style smoke test (web + scheduler + Postgres).
+# Local production-style smoke test (web + scheduler in one container + Postgres).
 # Usage:
 #   docker compose -f docker-compose.azure-prep.yml up --build -d
 #   docker compose -f docker-compose.azure-prep.yml run --rm web npx prisma migrate deploy
 #   curl -sf http://localhost:3000/api/health
-#   curl -sf http://localhost:3001/health
 
 services:
   postgres:
@@ -39,25 +38,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-
-  scheduler:
-    build: .
-    command: ["npm", "run", "scheduler:prod"]
-    ports:
-      - "3001:3001"
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql://newsagent:newsagent@postgres:5432/newsagent?schema=public
-      SCHEDULER_HEALTH_PORT: "3001"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:3001/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
 
 volumes:
   newsagent_pg:

@@ -55,6 +55,12 @@ model Agent {
   systemPrompt       String               @db.Text
   relevanceMinScore  Int                  @default(3)
   minRankedSources   Int                  @default(3)
+  maxRankedSources   Int                  @default(12)
+  shallowScrapeMaxLinks Int               @default(0)
+  enableNewsApi      Boolean              @default(true)
+  enableReddit       Boolean              @default(true)
+  enableHackerNews   Boolean              @default(true)
+  enableGoogleSearch Boolean              @default(true)
   keywordMatchMode   String               @default("OR")
   status             AgentStatus          @default(ACTIVE)
   createdAt        DateTime             @default(now())

@@ -1,4 +1,5 @@
 import { htmlToText, extractTitle } from "@/lib/sources";
+import { assertUrlIsSafeForScrape } from "@/lib/url-safety";
 import { getWorkspaceSettings } from "@/lib/workspace-settings";
 
 export interface ScrapeCheckResult {
@@ -16,6 +17,7 @@ export async function validateScrapeUrl(
     return { ok: false, message: "Enter a full URL starting with http:// or https://" };
   }
   try {
+    assertUrlIsSafeForScrape(url);
     const { sourceFetchTimeoutMs } = await getWorkspaceSettings();
     const res = await fetch(url, {
       headers: {
@@ -48,7 +50,13 @@ export async function validateScrapeUrl(
       message: `Looks good — about ${text.length.toLocaleString()} characters of readable text.`,
       title: extractTitle(html) || undefined,
     };
-  } catch {
-    return { ok: false, message: "Could not fetch the page (timeout, blocked, or invalid URL)." };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Could not fetch the page (timeout, blocked, or invalid URL).",
+    };
   }
 }

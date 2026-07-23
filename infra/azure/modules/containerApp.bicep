@@ -6,7 +6,10 @@ param acrLoginServer string
 param keyVaultUri string
 param ingressEnabled bool
 param targetPort int
-param healthPath string
+@description('HTTP path for readiness probe (DB check)')
+param readinessPath string = '/api/health'
+@description('HTTP path for liveness probe (process up, no DB)')
+param livenessPath string = '/api/health/live'
 param healthPort int
 param minReplicas int
 param maxReplicas int
@@ -65,7 +68,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               type: 'Liveness'
               httpGet: {
-                path: healthPath
+                path: livenessPath
                 port: healthPort
               }
               initialDelaySeconds: 10
@@ -74,7 +77,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               type: 'Readiness'
               httpGet: {
-                path: healthPath
+                path: readinessPath
                 port: healthPort
               }
               initialDelaySeconds: 5

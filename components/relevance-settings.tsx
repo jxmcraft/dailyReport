@@ -6,7 +6,11 @@ import { updateRelevanceSettings } from "@/app/agents/[id]/actions";
 import { KeywordChips } from "@/components/keyword-chips";
 import { SettingsSaveFooter } from "@/components/settings-save-footer";
 import { useSettingsSave } from "@/hooks/use-settings-save";
-import { TOP_K } from "@/lib/constants";
+import {
+  DEFAULT_MAX_RANKED_SOURCES,
+  DEFAULT_MIN_RANKED_SOURCES,
+  MAX_RANKED_SOURCES_CEILING,
+} from "@/lib/constants";
 import {
   DEFAULT_RELEVANCE_MIN_SCORE,
   MAX_RELEVANCE_SCORE,
@@ -15,47 +19,92 @@ import {
 import { DEFAULT_MAX_NEWS_AGE_DAYS } from "@/lib/recency";
 import type { KeywordMatchMode } from "@/lib/agents";
 
-const DEFAULT_MIN_RANKED_SOURCES = 3;
-
 export function RelevanceSettings({
   agentId,
   initialMinScore,
   initialMinRankedSources,
+  initialMaxRankedSources,
   initialMatchMode,
   topicKeywords,
 }: {
   agentId: string;
   initialMinScore: number;
   initialMinRankedSources: number;
+  initialMaxRankedSources: number;
   initialMatchMode: KeywordMatchMode;
   topicKeywords: string[];
 }) {
   const [minScore, setMinScore] = useState(initialMinScore);
-  const [minRankedSources, setMinRankedSources] = useState(initialMinRankedSources);
+  const [maxRankedSources, setMaxRankedSources] = useState(
+    initialMaxRankedSources
+  );
+  const [minRankedSources, setMinRankedSources] = useState(
+    Math.min(initialMinRankedSources, initialMaxRankedSources)
+  );
   const [matchMode, setMatchMode] = useState<KeywordMatchMode>(initialMatchMode);
   const [saved, setSaved] = useState({
     minScore: initialMinScore,
-    minRankedSources: initialMinRankedSources,
+    minRankedSources: Math.min(initialMinRankedSources, initialMaxRankedSources),
+    maxRankedSources: initialMaxRankedSources,
     matchMode: initialMatchMode,
   });
 
   const dirty =
     minScore !== saved.minScore ||
     minRankedSources !== saved.minRankedSources ||
+    maxRankedSources !== saved.maxRankedSources ||
     matchMode !== saved.matchMode;
 
   const { error, pending, save } = useSettingsSave(async () => {
-    await updateRelevanceSettings(agentId, minScore, matchMode, minRankedSources);
-    setSaved({ minScore, minRankedSources, matchMode });
+    await updateRelevanceSettings(
+      agentId,
+      minScore,
+      matchMode,
+      minRankedSources,
+      maxRankedSources
+    );
+    setSaved({ minScore, minRankedSources, maxRankedSources, matchMode });
   });
+
+  function onMaxChange(nextMax: number) {
+    setMaxRankedSources(nextMax);
+    if (minRankedSources > nextMax) {
+      setMinRankedSources(nextMax);
+    }
+  }
 
   return (
     <div className="space-y-8">
       <p className="text-sm leading-relaxed text-muted-foreground">
         Articles must match your keywords and fall within the last{" "}
-        {DEFAULT_MAX_NEWS_AGE_DAYS} days. The pipeline aborts if fewer than the
-        minimum ranked sources pass filtering before calling the LLM.
+        {DEFAULT_MAX_NEWS_AGE_DAYS} days. Max sources is how many ranked articles
+        enter the LLM; the run aborts if fewer than the minimum pass filtering.
       </p>
+
+      <div className="space-y-3">
+        <div className="flex items-baseline justify-between gap-4">
+          <label htmlFor="max-ranked-sources" className="text-sm font-medium">
+            Max sources in report
+          </label>
+          <span className="text-2xl font-semibold tabular-nums text-primary">
+            {maxRankedSources}
+          </span>
+        </div>
+        <input
+          id="max-ranked-sources"
+          type="range"
+          min={1}
+          max={MAX_RANKED_SOURCES_CEILING}
+          value={maxRankedSources}
+          onChange={(e) => onMaxChange(Number(e.target.value))}
+          className="w-full accent-primary"
+        />
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>1</span>
+          <span>Default {DEFAULT_MAX_RANKED_SOURCES}</span>
+          <span>{MAX_RANKED_SOURCES_CEILING} max</span>
+        </div>
+      </div>
 
       <div className="space-y-3">
         <div className="flex items-baseline justify-between gap-4">
@@ -70,7 +119,7 @@ export function RelevanceSettings({
           id="min-ranked-sources"
           type="range"
           min={1}
-          max={TOP_K}
+          max={maxRankedSources}
           value={minRankedSources}
           onChange={(e) => setMinRankedSources(Number(e.target.value))}
           className="w-full accent-primary"
@@ -78,7 +127,7 @@ export function RelevanceSettings({
         <div className="flex justify-between text-xs text-muted-foreground">
           <span>1 permissive</span>
           <span>Default {DEFAULT_MIN_RANKED_SOURCES}</span>
-          <span>{TOP_K} max</span>
+          <span>Up to max ({maxRankedSources})</span>
         </div>
       </div>
 

@@ -57,6 +57,12 @@ export default async function SettingsPage() {
               {llm.optimizerModel}
             </span>
           </div>
+          <div className="flex justify-between gap-4 border-b border-border/60 pb-4">
+            <span className="text-muted-foreground">Chat endpoint</span>
+            <span className="max-w-[60%] break-all text-right font-mono text-xs font-medium text-foreground">
+              {llm.chatEndpoint}
+            </span>
+          </div>
           <div className="flex justify-between gap-4">
             <span className="text-muted-foreground">Database</span>
             <span className="font-medium text-foreground">

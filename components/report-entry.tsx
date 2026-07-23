@@ -110,7 +110,7 @@ function ReportBody({
           </ul>
         </div>
       ) : null}
-      <div className="prose-report rounded-lg border border-border/60 bg-white p-4">
+      <div className="prose-report break-words rounded-lg border border-border/60 bg-white p-4">
         <ReactMarkdown>{report.generatedMarkdown}</ReactMarkdown>
       </div>
       {report.sourcesUsed.length > 0 ? (

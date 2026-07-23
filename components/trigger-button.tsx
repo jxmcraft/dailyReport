@@ -16,6 +16,7 @@ export function TriggerButton({
 }) {
   const { isRunning, status, startWatching, setOptimisticStatus } = useAgentRun();
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const loading = pending || isRunning;
@@ -23,11 +24,15 @@ export function TriggerButton({
 
   function run() {
     setError(null);
+    setNotice(null);
     startWatching();
     setOptimisticStatus("RUNNING");
     startTransition(async () => {
       try {
-        await triggerPipeline(agentId);
+        const result = await triggerPipeline(agentId);
+        if (result.reportStatus === "PARTIAL_FAILURE") {
+          setNotice("Run completed, but delivery or source issues were detected.");
+        }
       } catch (e) {
         setOptimisticStatus("ACTIVE");
         setError(e instanceof Error ? e.message : "Run failed");
@@ -53,6 +58,9 @@ export function TriggerButton({
       {error && (
         <span className="max-w-xs text-right text-xs text-red-600">{error}</span>
       )}
+      {notice ? (
+        <span className="max-w-xs text-right text-xs text-amber-700">{notice}</span>
+      ) : null}
     </div>
   );
 }

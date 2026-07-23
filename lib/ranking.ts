@@ -1,4 +1,5 @@
 import type { RankedDocument } from "@/lib/sources";
+import { DEFAULT_MAX_RANKED_SOURCES } from "@/lib/constants";
 import { parsePublishedMs } from "@/lib/recency";
 
 export interface RankResult {
@@ -131,7 +132,7 @@ function isRelevant(
 export function rankDocuments(
   keywords: string[],
   docs: RankedDocument[],
-  k = 12,
+  k = DEFAULT_MAX_RANKED_SOURCES,
   options: RankOptions = {}
 ): RankResult {
   const minScore = clampScore(

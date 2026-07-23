@@ -1,15 +1,24 @@
 import Link from "next/link";
 
+import { PaginationControls } from "@/components/pagination-controls";
 import { ReportEntry } from "@/components/report-entry";
 import { ClearLogsButton } from "@/components/clear-logs-button";
 import { EmptyState, PageHeader, PageShell } from "@/components/page-shell";
-import { getAllRuns } from "@/lib/agents";
+import { getRunsPage } from "@/lib/agents";
 import { pluralize } from "@/lib/pluralize";
 
 export const dynamic = "force-dynamic";
 
-export default async function LogsPage() {
-  const runs = await getAllRuns();
+export default async function LogsPage({
+  searchParams,
+}: {
+  searchParams?: { cursor?: string; direction?: "older" | "newer" };
+}) {
+  const page = await getRunsPage({
+    cursor: searchParams?.cursor,
+    direction: searchParams?.direction,
+  });
+  const runs = page.runs;
 
   return (
     <PageShell>
@@ -40,6 +49,11 @@ export default async function LogsPage() {
               />
             </div>
           ))}
+          <PaginationControls
+            basePath="/logs"
+            olderCursor={page.olderCursor}
+            newerCursor={page.newerCursor}
+          />
         </div>
       )}
     </PageShell>

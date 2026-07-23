@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { AgentNameSettings } from "@/components/agent-name-settings";
+import { BuiltInProviderSettings } from "@/components/built-in-provider-settings";
 import { useAgentRun } from "@/components/agent-run-context";
 import { ClearLogsButton } from "@/components/clear-logs-button";
 import { CronConfigurator } from "@/components/cron-configurator";
@@ -262,9 +263,21 @@ function WorkspacePanelContent({
             hasCustomScrapeSources={hasCustomScrape}
           />
           <div className="border-t border-border/60 pt-6">
+            <BuiltInProviderSettings
+              agentId={agent.id}
+              initial={{
+                enableNewsApi: agent.enableNewsApi,
+                enableReddit: agent.enableReddit,
+                enableHackerNews: agent.enableHackerNews,
+                enableGoogleSearch: agent.enableGoogleSearch,
+              }}
+            />
+          </div>
+          <div className="border-t border-border/60 pt-6">
             <ScrapeSourcesSettings
               agentId={agent.id}
               initialUrls={scrapeUrls}
+              initialShallowScrapeMaxLinks={agent.shallowScrapeMaxLinks}
               hasTopicKeywords={agent.topicKeywords.length > 0}
             />
           </div>
@@ -276,6 +289,7 @@ function WorkspacePanelContent({
           agentId={agent.id}
           initialMinScore={agent.relevanceMinScore}
           initialMinRankedSources={agent.minRankedSources}
+          initialMaxRankedSources={agent.maxRankedSources}
           initialMatchMode={agent.keywordMatchMode}
           topicKeywords={agent.topicKeywords}
         />
@@ -442,6 +456,12 @@ export type AgentDetailWorkspaceProps = {
     | "systemPrompt"
     | "relevanceMinScore"
     | "minRankedSources"
+    | "maxRankedSources"
+    | "shallowScrapeMaxLinks"
+    | "enableNewsApi"
+    | "enableReddit"
+    | "enableHackerNews"
+    | "enableGoogleSearch"
     | "keywordMatchMode"
     | "dataSources"
   >;

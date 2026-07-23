@@ -46,6 +46,35 @@ export default async function NewAgentPage() {
                 className={inputClass}
               />
             </label>
+            <fieldset className="space-y-3">
+              <legend className="text-sm font-medium">Built-in providers</legend>
+              <p className="text-sm text-muted-foreground">
+                Keyword-based providers run only when enabled here and configured in
+                <code className="mx-1 rounded bg-slate-100 px-1.5 py-0.5 text-xs">.env</code>.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  ["enableNewsApi", "News"],
+                  ["enableReddit", "Reddit"],
+                  ["enableHackerNews", "Hacker News"],
+                  ["enableGoogleSearch", "Google"],
+                ].map(([name, label]) => (
+                  <label
+                    key={name}
+                    className="flex items-center gap-2 rounded-lg border border-border/70 px-3 py-2 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      name={name}
+                      value="true"
+                      defaultChecked
+                      className="accent-primary"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block space-y-2">
                 <span className="text-sm font-medium">Frequency</span>

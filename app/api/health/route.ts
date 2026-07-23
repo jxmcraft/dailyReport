@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
+/** Readiness: Postgres reachable. Use for ACA readiness probes. */
 export async function GET() {
   try {
     await prisma.$queryRaw`SELECT 1`;

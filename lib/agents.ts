@@ -6,6 +6,7 @@ import type {
   IntelligenceReport,
 } from "@prisma/client";
 
+import { RUNS_PAGE_SIZE } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { formatDateDay } from "@/lib/format-date";
 import type { SourceDiagnostic } from "@/lib/sources";
@@ -70,6 +71,12 @@ export interface AgentView {
   systemPrompt: string;
   relevanceMinScore: number;
   minRankedSources: number;
+  maxRankedSources: number;
+  shallowScrapeMaxLinks: number;
+  enableNewsApi: boolean;
+  enableReddit: boolean;
+  enableHackerNews: boolean;
+  enableGoogleSearch: boolean;
   keywordMatchMode: KeywordMatchMode;
   status: AgentStatus;
   pipelineState: PipelineState;
@@ -133,6 +140,12 @@ function toAgentView(agent: AgentWithRelations): AgentView {
     systemPrompt: agent.systemPrompt,
     relevanceMinScore: agent.relevanceMinScore,
     minRankedSources: agent.minRankedSources,
+    maxRankedSources: agent.maxRankedSources,
+    shallowScrapeMaxLinks: agent.shallowScrapeMaxLinks,
+    enableNewsApi: agent.enableNewsApi,
+    enableReddit: agent.enableReddit,
+    enableHackerNews: agent.enableHackerNews,
+    enableGoogleSearch: agent.enableGoogleSearch,
     keywordMatchMode:
       agent.keywordMatchMode === "AND" ? "AND" : ("OR" as KeywordMatchMode),
     status: agent.status as AgentStatus,
@@ -271,6 +284,36 @@ export interface RunView {
   requireEmailApproval: boolean;
 }
 
+export interface RunsPage {
+  runs: RunView[];
+  olderCursor: string | null;
+  newerCursor: string | null;
+}
+
+function encodeRunViewCursor(run: RunView): string {
+  return Buffer.from(`${run.report.timestamp}::${run.report.id}`).toString("base64");
+}
+
+function decodeRunCursor(cursor: string): { id: string } {
+  const decoded = Buffer.from(cursor, "base64").toString("utf8");
+  const [, id] = decoded.split("::");
+  if (!id) throw new Error("Invalid run cursor.");
+  return { id };
+}
+
+function toRunView(r: IntelligenceReport & {
+  agent: Agent & { deliveryChannels: DeliveryChannel[] };
+}): RunView {
+  const channel = r.agent.deliveryChannels[0] ?? null;
+  return {
+    agentId: r.agentId,
+    agentName: r.agent.name,
+    report: toReportView(r),
+    deliveryTarget: channel?.target ?? null,
+    requireEmailApproval: channel?.requireEmailApproval ?? false,
+  };
+}
+
 export async function getAllRuns(): Promise<RunView[]> {
   const reports = await prisma.intelligenceReport.findMany({
     include: {
@@ -280,16 +323,49 @@ export async function getAllRuns(): Promise<RunView[]> {
     },
     orderBy: { timestamp: "desc" },
   });
-  return reports.map((r) => {
-    const channel = r.agent.deliveryChannels[0] ?? null;
-    return {
-      agentId: r.agentId,
-      agentName: r.agent.name,
-      report: toReportView(r),
-      deliveryTarget: channel?.target ?? null,
-      requireEmailApproval: channel?.requireEmailApproval ?? false,
-    };
+  return reports.map(toRunView);
+}
+
+export async function getRunsPage(opts?: {
+  take?: number;
+  cursor?: string;
+  direction?: "older" | "newer";
+}): Promise<RunsPage> {
+  const take = Math.max(1, Math.min(100, opts?.take ?? RUNS_PAGE_SIZE));
+  const direction = opts?.direction ?? "older";
+  const cursorId = opts?.cursor ? decodeRunCursor(opts.cursor).id : null;
+
+  const reports = await prisma.intelligenceReport.findMany({
+    include: {
+      agent: {
+        include: { deliveryChannels: { take: 1, orderBy: { id: "asc" } } },
+      },
+    },
+    orderBy:
+      direction === "older"
+        ? [{ timestamp: "desc" as const }, { id: "desc" as const }]
+        : [{ timestamp: "asc" as const }, { id: "asc" as const }],
+    cursor: cursorId ? { id: cursorId } : undefined,
+    skip: cursorId ? 1 : 0,
+    take: take + 1,
   });
+
+  const slice = reports.slice(0, take);
+  const normalized = direction === "older" ? slice : [...slice].reverse();
+  const runs = normalized.map(toRunView);
+  const hasMore = reports.length > take;
+
+  return {
+    runs,
+    olderCursor:
+      runs.length > 0 && (direction === "older" ? hasMore : !!opts?.cursor)
+        ? encodeRunViewCursor(runs[runs.length - 1])
+        : null,
+    newerCursor:
+      runs.length > 0 && opts?.cursor
+        ? encodeRunViewCursor(runs[0])
+        : null,
+  };
 }
 
 export { cronToHuman } from "@/lib/cron";
@@ -298,6 +374,12 @@ export { formatDate, formatDateDay } from "@/lib/format-date";
 export interface DailyReportGroup {
   day: string;
   runs: RunView[];
+}
+
+export interface DailyReportGroupsPage {
+  groups: DailyReportGroup[];
+  olderCursor: string | null;
+  newerCursor: string | null;
 }
 
 export async function getDailyReportGroups(): Promise<DailyReportGroup[]> {
@@ -315,4 +397,29 @@ export async function getDailyReportGroups(): Promise<DailyReportGroup[]> {
     day,
     runs: dayRuns,
   }));
+}
+
+export async function getDailyReportGroupsPage(opts?: {
+  take?: number;
+  cursor?: string;
+  direction?: "older" | "newer";
+}): Promise<DailyReportGroupsPage> {
+  const page = await getRunsPage(opts);
+  const byDay = new Map<string, RunView[]>();
+
+  for (const run of page.runs) {
+    const day = formatDateDay(run.report.timestamp);
+    const list = byDay.get(day) ?? [];
+    list.push(run);
+    byDay.set(day, list);
+  }
+
+  return {
+    groups: Array.from(byDay.entries()).map(([day, dayRuns]) => ({
+      day,
+      runs: dayRuns,
+    })),
+    olderCursor: page.olderCursor,
+    newerCursor: page.newerCursor,
+  };
 }

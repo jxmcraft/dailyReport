@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import { MobileTopNav } from "@/components/mobile-top-nav";
 import { Sidebar } from "@/components/sidebar";
 
 const geistSans = localFont({
@@ -31,8 +32,13 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <div className="flex min-h-screen bg-[hsl(210,40%,98%)]">
-          <Sidebar />
-          <main className="flex-1 overflow-auto">{children}</main>
+          <div className="hidden lg:flex">
+            <Sidebar />
+          </div>
+          <main className="flex-1 overflow-x-hidden">
+            <MobileTopNav />
+            {children}
+          </main>
         </div>
       </body>
     </html>

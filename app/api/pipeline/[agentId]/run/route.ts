@@ -35,7 +35,14 @@ export async function POST(
         { status: 422 }
       );
     }
-    return NextResponse.json({ ok: true, agentId: params.agentId, outcome: "success" });
+    return NextResponse.json({
+      ok: true,
+      agentId: params.agentId,
+      outcome: "success",
+      reportId: result.reportId,
+      reportStatus: result.reportStatus,
+      deliveryFailed: result.deliveryFailed,
+    });
   } catch (error) {
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : String(error) },
